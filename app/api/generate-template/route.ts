@@ -160,7 +160,7 @@ export async function POST(req: Request) {
           role: 'system',
           content: fullPrompt,
         },
-        ...convertMessages(body.messages),
+        ...(convertMessages(body.messages) as any[]),
       ],
       temperature: 0.7,
     });
