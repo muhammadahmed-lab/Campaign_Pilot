@@ -105,7 +105,8 @@ export const launchCampaign = inngest.createFunction(
             batchSent = result.sent;
             batchFailed = result.failed;
           }
-        } catch {
+        } catch (err) {
+          console.error('Send batch error:', err);
           batchFailed = recipientsChunk.length;
         }
 
@@ -117,6 +118,8 @@ export const launchCampaign = inngest.createFunction(
             failed: { increment: batchFailed },
           },
         });
+
+        return { batchSent, batchFailed };
       });
 
       if (i < recipientChunks.length - 1) {
