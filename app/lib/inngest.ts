@@ -81,9 +81,6 @@ export const launchCampaign = inngest.createFunction(
     const batchSize = sendDelay > 0 ? 1 : (provider === 'gmail' ? 10 : 50);
     const recipientChunks = chunk(recipients, batchSize);
 
-    let totalSent = 0;
-    let totalFailed = 0;
-
     for (let i = 0; i < recipientChunks.length; i++) {
       const recipientsChunk = recipientChunks[i];
 
@@ -95,23 +92,30 @@ export const launchCampaign = inngest.createFunction(
           html: interpolate(campaign.htmlBody, recipient),
         }));
 
+        let batchSent = 0;
+        let batchFailed = 0;
+
         try {
           if (provider === 'gmail') {
             const result = await sendSmtpBatch(providerEmail, providerCredential, emails);
-            totalSent += result.sent;
-            totalFailed += result.failed;
+            batchSent = result.sent;
+            batchFailed = result.failed;
           } else {
             const result = await sendBatch(providerCredential, emails);
-            totalSent += result.sent;
-            totalFailed += result.failed;
+            batchSent = result.sent;
+            batchFailed = result.failed;
           }
         } catch {
-          totalFailed += recipientsChunk.length;
+          batchFailed = recipientsChunk.length;
         }
 
+        // Increment counters in DB (not in-memory)
         await prisma.campaign.update({
           where: { id: campaignId },
-          data: { sent: totalSent, failed: totalFailed },
+          data: {
+            sent: { increment: batchSent },
+            failed: { increment: batchFailed },
+          },
         });
       });
 
@@ -121,14 +125,17 @@ export const launchCampaign = inngest.createFunction(
       }
     }
 
-    // Final step: Mark complete
+    // Final step: Read actual counts from DB and set final status
     await step.run('finalize', async () => {
+      const final = await prisma.campaign.findUnique({
+        where: { id: campaignId },
+        select: { sent: true, failed: true },
+      });
+
       await prisma.campaign.update({
         where: { id: campaignId },
         data: {
-          status: totalSent > 0 ? 'completed' : 'failed',
-          sent: totalSent,
-          failed: totalFailed,
+          status: (final?.sent ?? 0) > 0 ? 'completed' : 'failed',
         },
       });
     });
