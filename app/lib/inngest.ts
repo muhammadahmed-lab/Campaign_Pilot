@@ -142,6 +142,6 @@ export const launchCampaign = inngest.createFunction(
 
     // Images are kept until user archives or deletes the campaign
 
-    return { success: true, campaignId, sent: totalSent, failed: totalFailed };
+    return { success: true, campaignId };
   }
 );
