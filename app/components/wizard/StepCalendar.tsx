@@ -17,8 +17,6 @@ interface StepCalendarProps {
 }
 
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-const HOURS = Array.from({ length: 12 }, (_, i) => (i + 1).toString().padStart(2, '0'));
-const MINUTES = ['00', '15', '30', '45'];
 
 export default function StepCalendar({
   scheduledAt,
@@ -216,35 +214,61 @@ export default function StepCalendar({
           {/* Time Picker */}
           <div className="pt-6 border-t border-cp-border">
             <label className="block text-sm font-medium text-cp-grey mb-3">Time</label>
-            <div className="flex items-center space-x-2">
-              <div className="flex items-center bg-cp-black border border-cp-border rounded-lg overflow-hidden">
-                <select
+            <div className="flex items-center gap-2">
+              <div className="flex items-center bg-cp-black border border-cp-border rounded-lg">
+                <input
+                  type="text"
                   value={selectedHour}
-                  onChange={(e) => handleTimeChange('hour', e.target.value)}
-                  className="bg-transparent text-white p-3 outline-none appearance-none cursor-pointer hover:bg-cp-charcoal"
-                >
-                  {HOURS.map(h => <option key={h} value={h} className="bg-cp-charcoal">{h}</option>)}
-                </select>
-                <span className="text-cp-grey">:</span>
-                <select
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '').slice(0, 2);
+                    const num = parseInt(val, 10);
+                    if (val === '' || (num >= 1 && num <= 12)) {
+                      setSelectedHour(val);
+                      if (val && num >= 1 && num <= 12) handleTimeChange('hour', val.padStart(2, '0'));
+                    }
+                  }}
+                  onBlur={() => {
+                    const num = parseInt(selectedHour, 10);
+                    if (!selectedHour || isNaN(num) || num < 1) setSelectedHour('12');
+                    else if (num > 12) setSelectedHour('12');
+                    else setSelectedHour(num.toString().padStart(2, '0'));
+                  }}
+                  className="w-12 bg-transparent text-white text-center text-lg font-mono py-3 outline-none"
+                  placeholder="12"
+                />
+                <span className="text-cp-grey text-lg font-mono">:</span>
+                <input
+                  type="text"
                   value={selectedMinute}
-                  onChange={(e) => handleTimeChange('minute', e.target.value)}
-                  className="bg-transparent text-white p-3 outline-none appearance-none cursor-pointer hover:bg-cp-charcoal"
-                >
-                  {MINUTES.map(m => <option key={m} value={m} className="bg-cp-charcoal">{m}</option>)}
-                </select>
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '').slice(0, 2);
+                    const num = parseInt(val, 10);
+                    if (val === '' || (num >= 0 && num <= 59)) {
+                      setSelectedMinute(val);
+                      if (val.length === 2 && num >= 0 && num <= 59) handleTimeChange('minute', val);
+                    }
+                  }}
+                  onBlur={() => {
+                    const num = parseInt(selectedMinute, 10);
+                    if (!selectedMinute || isNaN(num)) setSelectedMinute('00');
+                    else if (num > 59) setSelectedMinute('59');
+                    else setSelectedMinute(num.toString().padStart(2, '0'));
+                  }}
+                  className="w-12 bg-transparent text-white text-center text-lg font-mono py-3 outline-none"
+                  placeholder="00"
+                />
               </div>
 
               <div className="flex bg-cp-black border border-cp-border rounded-lg overflow-hidden p-1">
                 <button
                   onClick={() => handleTimeChange('ampm', 'AM')}
-                  className={`px-3 py-1.5 text-sm rounded-md transition-colors ${selectedAmPm === 'AM' ? 'bg-white text-black' : 'text-cp-grey hover:text-white'}`}
+                  className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${selectedAmPm === 'AM' ? 'bg-white text-black' : 'text-cp-grey hover:text-white'}`}
                 >
                   AM
                 </button>
                 <button
                   onClick={() => handleTimeChange('ampm', 'PM')}
-                  className={`px-3 py-1.5 text-sm rounded-md transition-colors ${selectedAmPm === 'PM' ? 'bg-white text-black' : 'text-cp-grey hover:text-white'}`}
+                  className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${selectedAmPm === 'PM' ? 'bg-white text-black' : 'text-cp-grey hover:text-white'}`}
                 >
                   PM
                 </button>
