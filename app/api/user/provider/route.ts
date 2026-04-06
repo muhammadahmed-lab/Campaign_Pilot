@@ -1,5 +1,6 @@
 import { auth } from '@/app/lib/auth';
 import { prisma } from '@/app/lib/prisma';
+import { encrypt, decrypt } from '@/app/lib/crypto';
 import { NextResponse } from 'next/server';
 
 const DEFAULT_PROVIDER_CONFIG = {
@@ -25,7 +26,16 @@ export async function GET() {
       },
     });
 
-    return NextResponse.json(config ?? DEFAULT_PROVIDER_CONFIG, { status: 200 });
+    if (!config) {
+      return NextResponse.json(DEFAULT_PROVIDER_CONFIG, { status: 200 });
+    }
+
+    // Decrypt credential before returning to client
+    return NextResponse.json({
+      provider: config.provider,
+      providerEmail: config.providerEmail,
+      providerCredential: decrypt(config.providerCredential),
+    }, { status: 200 });
   } catch {
     return NextResponse.json(
       { error: 'Failed to fetch provider configuration' },
@@ -64,14 +74,16 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'providerCredential is required' }, { status: 400 });
     }
 
-    const updatedConfig = await prisma.providerConfig.upsert({
+    // Encrypt credential before storing
+    const encryptedCredential = encrypt(providerCredential);
+
+    await prisma.providerConfig.upsert({
       where: { userId: session.user.id },
-      create: { userId: session.user.id, provider, providerEmail, providerCredential },
-      update: { provider, providerEmail, providerCredential },
-      select: { provider: true, providerEmail: true, providerCredential: true },
+      create: { userId: session.user.id, provider, providerEmail, providerCredential: encryptedCredential },
+      update: { provider, providerEmail, providerCredential: encryptedCredential },
     });
 
-    return NextResponse.json(updatedConfig, { status: 200 });
+    return NextResponse.json({ provider, providerEmail, providerCredential: '' }, { status: 200 });
   } catch {
     return NextResponse.json(
       { error: 'Failed to save provider configuration' },

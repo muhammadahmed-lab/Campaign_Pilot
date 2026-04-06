@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/app/lib/auth';
 import { prisma } from '@/app/lib/prisma';
 import { supabase } from '@/app/lib/supabase';
+import { encrypt } from '@/app/lib/crypto';
 
 const allowedFields = new Set([
   'scheduledAt', 'sendNow', 'subject', 'htmlBody', 'provider',
@@ -21,6 +22,15 @@ export async function GET(
 
     const campaign = await prisma.campaign.findFirst({
       where: { id: params.id, userId: session.user.id },
+      select: {
+        id: true, name: true, status: true, subject: true, htmlBody: true,
+        scheduledAt: true, sendNow: true, sendDelay: true, templateStyle: true,
+        provider: true, providerEmail: true,
+        recipientCount: true, sent: true, failed: true,
+        chatHistory: true, archivedAt: true,
+        createdAt: true, updatedAt: true,
+        // providerCredential intentionally excluded
+      },
     });
 
     if (!campaign) {
@@ -95,12 +105,18 @@ export async function PATCH(
         case 'htmlBody':
         case 'provider':
         case 'providerEmail':
-        case 'providerCredential':
         case 'templateStyle': {
           if (value !== null && typeof value !== 'string') {
             return NextResponse.json({ error: `Invalid ${key}` }, { status: 400 });
           }
           updateData[key] = value;
+          break;
+        }
+        case 'providerCredential': {
+          if (value !== null && typeof value !== 'string') {
+            return NextResponse.json({ error: 'Invalid providerCredential' }, { status: 400 });
+          }
+          updateData.providerCredential = value ? encrypt(value) : '';
           break;
         }
         case 'chatHistory': {

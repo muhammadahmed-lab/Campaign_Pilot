@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/app/lib/auth';
 import { prisma } from '@/app/lib/prisma';
 import { inngest } from '@/app/lib/inngest';
+import { decrypt } from '@/app/lib/crypto';
 import { sendBatch } from '@/app/lib/resend';
 import { sendSmtpBatch } from '@/app/lib/smtp';
 
@@ -163,7 +164,7 @@ export async function POST(
       recipients,
       provider: campaign.provider,
       providerEmail: campaign.providerEmail,
-      providerCredential: campaign.providerCredential,
+      providerCredential: decrypt(campaign.providerCredential),
       sendNow: Boolean(campaign.sendNow),
       scheduledAt: campaign.scheduledAt ? campaign.scheduledAt.toISOString() : null,
       sendDelay: campaign.sendDelay ?? 0,

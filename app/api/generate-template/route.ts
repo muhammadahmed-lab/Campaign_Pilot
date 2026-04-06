@@ -154,6 +154,7 @@ export async function POST(req: Request) {
 
     const completion = await openai.chat.completions.create({
       model: process.env.OPENAI_MODEL || 'gpt-4o',
+      max_tokens: 4096,
       messages: [
         {
           role: 'system',

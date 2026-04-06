@@ -269,14 +269,20 @@ export default function CampaignDetailPage() {
           </div>
         </section>
 
-        {/* Email Preview */}
+        {/* Email Preview (sandboxed iframe to prevent XSS) */}
         {campaign.htmlBody && (
           <section className="bg-cp-dark border border-cp-border/60 rounded-2xl overflow-hidden">
             <div className="px-6 py-4 border-b border-cp-border/60 bg-cp-charcoal/80">
               <h2 className="font-medium font-heading text-cp-light">Email Content Preview</h2>
             </div>
-            <div className="p-6 bg-white text-slate-900 min-h-[300px]">
-              <div dangerouslySetInnerHTML={{ __html: campaign.htmlBody }} />
+            <div className="bg-white min-h-[300px]">
+              <iframe
+                sandbox=""
+                className="w-full border-none min-h-[400px]"
+                style={{ height: '500px' }}
+                srcDoc={`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;padding:24px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:#1a1a1a;background:#fff;line-height:1.6}a{color:#4f46e5}img{max-width:100%;height:auto}</style></head><body>${campaign.htmlBody}</body></html>`}
+                title="Email Preview"
+              />
             </div>
           </section>
         )}
