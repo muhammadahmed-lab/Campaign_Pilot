@@ -1,0 +1,98 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-[#0A0A0A] text-white antialiased font-body;
+  }
+
+  ::selection {
+    @apply bg-white/10 text-white;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-cp-muted rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-cp-grey;
+  }
+}
+
+@layer components {
+  /* TipTap Editor */
+  .tiptap-editor .ProseMirror {
+    @apply min-h-[200px] p-4 outline-none text-cp-light transition-all;
+  }
+
+  .tiptap-editor.expanded .ProseMirror {
+    @apply min-h-[500px];
+  }
+
+  .tiptap-editor .editor-wrapper {
+    resize: vertical;
+    overflow: auto;
+    min-height: 200px;
+    max-height: 70vh;
+  }
+
+  .tiptap-editor.expanded .editor-wrapper {
+    min-height: 500px;
+  }
+
+  .tiptap-editor .editor-wrapper::-webkit-resizer {
+    display: none;
+  }
+
+  .tiptap-editor .ProseMirror p {
+    @apply mb-2;
+  }
+
+  .tiptap-editor .ProseMirror h1 {
+    @apply text-2xl font-bold mb-3 font-heading;
+  }
+
+  .tiptap-editor .ProseMirror h2 {
+    @apply text-xl font-semibold mb-2 font-heading;
+  }
+
+  .tiptap-editor .ProseMirror ul {
+    @apply list-disc pl-6 mb-2;
+  }
+
+  .tiptap-editor .ProseMirror ol {
+    @apply list-decimal pl-6 mb-2;
+  }
+
+  .tiptap-editor .ProseMirror a {
+    @apply text-white underline;
+  }
+
+  .tiptap-editor .ProseMirror s {
+    @apply line-through;
+  }
+
+  .tiptap-editor .ProseMirror:focus {
+    @apply outline-none;
+  }
+
+  /* Chat message styles */
+  .chat-message-content p {
+    @apply mb-1;
+  }
+
+  .chat-message-content ul {
+    @apply list-disc pl-4 mb-2;
+  }
+
+  .chat-message-content ol {
+    @apply list-decimal pl-4 mb-2;
+  }
+}
