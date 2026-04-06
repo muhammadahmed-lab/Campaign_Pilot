@@ -18,6 +18,7 @@ type LaunchCampaignEvent = {
     providerCredential: string;
     sendNow: boolean;
     scheduledAt: string | null;
+    sendDelay?: number;
   };
 };
 
