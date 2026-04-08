@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import type { ChatMessage } from '@/app/types';
+import type { ChatMessage, ImageAsset } from '@/app/types';
 
 interface StepTemplateProps {
   campaignId: string;
   chatMessages: ChatMessage[];
+  imageAssets?: ImageAsset[];
   subject: string;
   setSubject: (s: string) => void;
   htmlBody: string;
@@ -47,6 +48,7 @@ function formatHtml(html: string): string {
 export default function StepTemplate({
   campaignId,
   chatMessages,
+  imageAssets,
   subject,
   setSubject,
   htmlBody,
@@ -118,7 +120,7 @@ export default function StepTemplate({
       const res = await fetch('/api/generate-template', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: chatMessages, campaignId, templateStyle }),
+        body: JSON.stringify({ messages: chatMessages, campaignId, templateStyle, imageAssets }),
       });
       if (!res.ok) throw new Error('Failed to generate template');
       const data = await res.json();

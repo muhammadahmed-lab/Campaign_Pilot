@@ -1,18 +1,40 @@
 'use client';
 
 import React, { useState, useRef, useEffect, DragEvent, ClipboardEvent } from 'react';
-import type { ChatMessage } from '@/app/types';
+import type { ChatMessage, ImageAsset, ImageRole } from '@/app/types';
+
+function parseImageRoles(text: string): ImageAsset[] {
+  const pattern = /\[IMAGE_ROLE:\s*url=([^,]+),\s*role=(\w+),\s*alt=([^\]]*)\]/g;
+  const assets: ImageAsset[] = [];
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    assets.push({
+      url: match[1].trim(),
+      role: match[2].trim() as ImageRole,
+      alt: match[3].trim() || 'Campaign image',
+    });
+  }
+  return assets;
+}
+
+function stripImageRoleMarkers(text: string): string {
+  return text.replace(/\[IMAGE_ROLE:[^\]]*\]\n?/g, '').trim();
+}
 
 interface StepChatProps {
   campaignId: string;
   chatMessages: ChatMessage[];
   setChatMessages: (msgs: ChatMessage[]) => void;
+  imageAssets: ImageAsset[];
+  setImageAssets: (assets: ImageAsset[]) => void;
   onNext: () => void;
   onBack: () => void;
 }
 
 export default function StepChat({
   campaignId,
+  imageAssets,
+  setImageAssets,
   chatMessages,
   setChatMessages,
   onNext,
@@ -151,11 +173,18 @@ export default function StepChat({
         }
       }
 
+      // Parse image role classifications from AI response
+      const newAssets = parseImageRoles(aiContent);
+      if (newAssets.length > 0) {
+        setImageAssets([...imageAssets, ...newAssets]);
+      }
+
       setChatMessages([
         ...updatedMessages,
         {
           role: 'assistant',
-          content: aiContent,
+          content: stripImageRoleMarkers(aiContent),
+          classifiedImages: newAssets.length > 0 ? newAssets : undefined,
           timestamp: Date.now(),
         },
       ]);
@@ -331,7 +360,7 @@ export default function StepChat({
             </div>
             <div className="max-w-[80%] flex flex-col gap-2 items-start">
               <div className="px-5 py-3.5 text-sm shadow-sm bg-cp-border text-cp-light rounded-2xl rounded-bl-md border border-cp-muted/50">
-                <div className="break-words chat-message-content">{renderMarkdown(streamingMessage)}</div>
+                <div className="break-words chat-message-content">{renderMarkdown(stripImageRoleMarkers(streamingMessage))}</div>
               </div>
             </div>
           </div>

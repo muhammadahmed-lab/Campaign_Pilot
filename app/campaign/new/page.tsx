@@ -9,7 +9,7 @@ import StepChat from '@/app/components/wizard/StepChat';
 import StepTemplate from '@/app/components/wizard/StepTemplate';
 import StepRecipients from '@/app/components/wizard/StepRecipients';
 import StepLaunch from '@/app/components/wizard/StepLaunch';
-import type { ChatMessage, Recipient, EmailProvider } from '@/app/types';
+import type { ChatMessage, Recipient, EmailProvider, ImageAsset } from '@/app/types';
 
 interface LocalWizardState {
   name: string;
@@ -25,6 +25,7 @@ interface LocalWizardState {
   saveCredentials: boolean;
   sendDelay: number;
   templateStyle: string;
+  imageAssets: ImageAsset[];
 }
 
 const INITIAL_STATE: LocalWizardState = {
@@ -41,6 +42,7 @@ const INITIAL_STATE: LocalWizardState = {
   saveCredentials: true,
   sendDelay: 0,
   templateStyle: 'professional',
+  imageAssets: [],
 };
 
 export default function NewCampaignWizard() {
@@ -193,6 +195,8 @@ export default function NewCampaignWizard() {
             campaignId={campaignId!}
             chatMessages={wizardState.chatMessages}
             setChatMessages={(msgs) => setWizardState((prev) => ({ ...prev, chatMessages: msgs }))}
+            imageAssets={wizardState.imageAssets}
+            setImageAssets={(assets) => setWizardState((prev) => ({ ...prev, imageAssets: assets }))}
             onNext={handleNext}
             onBack={handleBack}
           />
@@ -202,6 +206,7 @@ export default function NewCampaignWizard() {
           <StepTemplate
             campaignId={campaignId!}
             chatMessages={wizardState.chatMessages}
+            imageAssets={wizardState.imageAssets}
             subject={wizardState.subject}
             setSubject={(s) => setWizardState((prev) => ({ ...prev, subject: s }))}
             htmlBody={wizardState.htmlBody}
