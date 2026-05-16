@@ -318,6 +318,20 @@ export default function StepChat({
                   </button>
                 ))}
               </div>
+
+              <div className="flex items-center gap-2 pt-4 w-full">
+                <div className="flex-1 border-t border-cp-border" />
+                <span className="text-xs text-cp-grey font-mono uppercase tracking-wider">or</span>
+                <div className="flex-1 border-t border-cp-border" />
+              </div>
+
+              <button
+                type="button"
+                onClick={onNext}
+                className="text-sm text-cp-light hover:text-white underline-offset-4 hover:underline transition-colors"
+              >
+                Already have HTML? Skip to Template &rarr;
+              </button>
             </div>
           </div>
         )}
