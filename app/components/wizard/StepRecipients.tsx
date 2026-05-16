@@ -53,6 +53,13 @@ export default function StepRecipients({ recipients, setRecipients, onNext, onBa
       return;
     }
 
+    // Every column that isn't email or name is carried through as a custom
+    // variable, accessible as {{column_name}} in the template (key sanitized
+    // to lowercase + [a-z0-9_]).
+    const extraCols = headers.filter((h) => h !== emailCol && h !== nameCol);
+    const sanitizeKey = (raw: string) =>
+      raw.toLowerCase().trim().replace(/[^a-z0-9_]/g, '_');
+
     const seenEmails = new Set<string>();
     const validRecipients: Recipient[] = [];
     let invalidCount = 0;
@@ -76,7 +83,14 @@ export default function StepRecipients({ recipients, setRecipients, onNext, onBa
       }
 
       seenEmails.add(email);
-      validRecipients.push({ email, name: rawName || undefined });
+      const recipient: Recipient = { email, name: rawName || undefined };
+      for (const col of extraCols) {
+        const key = sanitizeKey(col);
+        if (!key) continue;
+        const value = (row[col] ?? '').toString().trim();
+        if (value) recipient[key] = value;
+      }
+      validRecipients.push(recipient);
     });
 
     setStats({ valid: validRecipients.length, invalid: invalidCount, duplicates: duplicateCount });

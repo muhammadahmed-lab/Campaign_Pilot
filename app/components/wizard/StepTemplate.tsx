@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import type { ChatMessage, ImageAsset } from '@/app/types';
+import { splitHtmlDoc, assembleHtml } from '@/app/lib/htmlEnvelope';
 
 interface StepTemplateProps {
   campaignId: string;
@@ -25,18 +26,6 @@ const TEMPLATE_STYLES = [
   { value: 'announcement', label: 'Announcement' },
   { value: 'product-update', label: 'Product Update' },
 ];
-
-function splitHtmlDoc(html: string): { before: string; bodyHtml: string; after: string } {
-  const match = html.match(/^([\s\S]*<body[^>]*>)([\s\S]*)(<\/body>[\s\S]*)$/i);
-  if (match) return { before: match[1], bodyHtml: match[2], after: match[3] };
-  const defaultBefore = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head><body style="margin:0;padding:24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;background:#fff;line-height:1.6;">`;
-  const defaultAfter = `</body></html>`;
-  return { before: defaultBefore, bodyHtml: html, after: defaultAfter };
-}
-
-function assembleHtml(before: string, body: string, after: string): string {
-  return `${before}${body}${after}`;
-}
 
 export default function StepTemplate({
   campaignId,
@@ -237,14 +226,17 @@ export default function StepTemplate({
           Back
         </button>
 
-        <div className="flex-1 flex items-center gap-3 bg-cp-dark border border-cp-border rounded-lg px-4 py-2 focus-within:border-white/50 transition-all">
-          <span className="text-cp-grey text-sm font-medium uppercase tracking-wider">Subject:</span>
+        <div className="flex-1 flex items-center gap-3 bg-cp-dark border border-cp-border rounded-lg px-4 py-2 transition-all">
+          <label htmlFor="campaign-subject" className="text-cp-grey text-sm font-medium uppercase tracking-wider cursor-text">Subject:</label>
           <input
+            id="campaign-subject"
+            name="subject"
             type="text"
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
+            autoComplete="off"
             placeholder="Enter email subject..."
-            className="flex-1 bg-transparent border-none text-white font-heading text-lg focus:outline-none placeholder:text-cp-muted"
+            className="flex-1 bg-transparent border-none text-white font-heading text-lg focus:outline-none focus:ring-2 focus:ring-white/30 rounded-sm placeholder:text-cp-muted"
           />
         </div>
       </div>

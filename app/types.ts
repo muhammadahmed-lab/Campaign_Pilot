@@ -12,6 +12,10 @@ export interface ImageAsset {
 export interface Recipient {
   email: string;
   name?: string;
+  // Extra fields carried through from CSV columns (e.g. company, firstname).
+  // Accessed by name in the interpolate() function so users can write
+  // {{company}} in the email body and have it substituted per-recipient.
+  [key: string]: string | undefined;
 }
 
 export interface ChatMessage {

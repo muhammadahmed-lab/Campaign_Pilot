@@ -3,11 +3,8 @@ import { prisma } from '@/app/lib/prisma';
 import { sendBatch } from '@/app/lib/resend';
 import { sendSmtpBatch } from '@/app/lib/smtp';
 import { supabase } from '@/app/lib/supabase';
-
-type Recipient = {
-  email: string;
-  name?: string;
-};
+import { interpolate } from '@/app/lib/interpolate';
+import type { Recipient } from '@/app/types';
 
 type LaunchCampaignEvent = {
   data: {
@@ -28,10 +25,6 @@ function chunk<T>(arr: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
   return chunks;
-}
-
-function interpolate(template: string, recipient: Recipient) {
-  return template.replace(/\{\{\s*name\s*\}\}/g, recipient.name?.trim() || '');
 }
 
 export const launchCampaign = inngest.createFunction(

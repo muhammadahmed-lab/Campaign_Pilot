@@ -5,11 +5,8 @@ import { inngest } from '@/app/lib/inngest';
 import { decrypt } from '@/app/lib/crypto';
 import { sendBatch } from '@/app/lib/resend';
 import { sendSmtpBatch } from '@/app/lib/smtp';
-
-type Recipient = {
-  email: string;
-  name?: string;
-};
+import { interpolate } from '@/app/lib/interpolate';
+import type { Recipient } from '@/app/types';
 
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -19,10 +16,6 @@ function chunk<T>(arr: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
   return chunks;
-}
-
-function interpolate(template: string, recipient: Recipient) {
-  return template.replace(/\{\{\s*name\s*\}\}/g, recipient.name?.trim() || '');
 }
 
 async function directProcessCampaign(params: {
@@ -127,10 +120,21 @@ export async function POST(
       return NextResponse.json({ error: 'Recipients must contain between 1 and 10000 entries' }, { status: 400 });
     }
 
-    const mapped: Recipient[] = body.recipients.map((r: any) => ({
-      email: String(r.email || '').trim().toLowerCase(),
-      name: r.name?.trim() || undefined,
-    }));
+    const mapped: Recipient[] = body.recipients.map((r: any) => {
+      const recipient: Recipient = {
+        email: String(r?.email || '').trim().toLowerCase(),
+        name: typeof r?.name === 'string' && r.name.trim() ? r.name.trim() : undefined,
+      };
+      // Preserve any additional string fields (custom CSV columns) so the
+      // template's {{column}} tokens can substitute them.
+      if (r && typeof r === 'object') {
+        for (const [key, value] of Object.entries(r)) {
+          if (key === 'email' || key === 'name') continue;
+          if (typeof value === 'string') recipient[key] = value;
+        }
+      }
+      return recipient;
+    });
 
     // Dedupe by email (first occurrence wins). Drop entries with empty email.
     const seen = new Map<string, Recipient>();

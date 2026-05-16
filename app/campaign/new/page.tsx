@@ -10,6 +10,7 @@ import StepTemplate from '@/app/components/wizard/StepTemplate';
 import StepRecipients from '@/app/components/wizard/StepRecipients';
 import StepLaunch from '@/app/components/wizard/StepLaunch';
 import type { ChatMessage, Recipient, EmailProvider, ImageAsset } from '@/app/types';
+import { compactInlineImages } from '@/app/lib/compactInlineImages';
 
 interface LocalWizardState {
   name: string;
@@ -170,7 +171,39 @@ function NewCampaignWizardInner() {
       return;
     }
     const nextStep = Math.min(currentStep + 1, 5);
-    await saveCampaign(wizardState, cid);
+
+    // When leaving Template (step 3), compact inline base64 images to
+    // Supabase URLs so the saved + sent htmlBody stays under provider
+    // size limits.
+    let stateToSave = wizardState;
+    if (currentStep === 3 && wizardState.htmlBody.includes('data:image/')) {
+      const toastId = toast.loading('Optimizing images...');
+      try {
+        const { html: compacted, replaced, failed } = await compactInlineImages(
+          wizardState.htmlBody,
+          cid
+        );
+        if (replaced > 0 || failed > 0) {
+          stateToSave = { ...wizardState, htmlBody: compacted };
+          setWizardState(stateToSave);
+        }
+        if (failed > 0) {
+          toast.error(
+            `${failed} image(s) couldn't be optimized — they'll be sent inline.`,
+            { id: toastId }
+          );
+        } else if (replaced > 0) {
+          toast.success(`Optimized ${replaced} image(s).`, { id: toastId });
+        } else {
+          toast.dismiss(toastId);
+        }
+      } catch {
+        toast.dismiss(toastId);
+        // Soft-fail — proceed with original htmlBody.
+      }
+    }
+
+    await saveCampaign(stateToSave, cid);
     setCurrentStep(nextStep);
     setMaxStepReached((m) => Math.max(m, nextStep));
   };

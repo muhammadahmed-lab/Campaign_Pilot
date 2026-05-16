@@ -128,16 +128,20 @@ export async function PATCH(
         case 'recipients': {
           if (!Array.isArray(value)) return NextResponse.json({ error: 'Invalid recipients' }, { status: 400 });
           if (value.length > 10000) return NextResponse.json({ error: 'Too many recipients' }, { status: 413 });
-          const isValid = value.every((recipient) => (
-            recipient &&
-            typeof recipient === 'object' &&
-            !Array.isArray(recipient) &&
-            typeof (recipient as { email?: unknown }).email === 'string' &&
-            (
-              (recipient as { name?: unknown }).name === undefined ||
-              typeof (recipient as { name?: unknown }).name === 'string'
-            )
-          ));
+          // Each recipient must be a plain object with a string email. Any
+          // additional fields (name, or custom CSV columns) must be strings if
+          // present — no nested objects, no arrays.
+          const isValid = value.every((recipient) => {
+            if (!recipient || typeof recipient !== 'object' || Array.isArray(recipient)) return false;
+            const r = recipient as Record<string, unknown>;
+            if (typeof r.email !== 'string') return false;
+            for (const [k, v] of Object.entries(r)) {
+              if (k === 'email') continue;
+              if (v === undefined || v === null) continue;
+              if (typeof v !== 'string') return false;
+            }
+            return true;
+          });
           if (!isValid) return NextResponse.json({ error: 'Invalid recipients' }, { status: 400 });
           updateData.recipients = value;
           break;
