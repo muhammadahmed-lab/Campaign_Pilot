@@ -23,7 +23,7 @@
     "@tiptap/react": "^2.2.0",
     "@tiptap/starter-kit": "^2.2.0",
     "date-fns": "^3.6.0",
-    "inngest": "^3.19.0",
+    "inngest": "^3.54.2",
     "next": "^14.2.0",
     "next-auth": "^5.0.0-beta.25",
     "nodemailer": "^7.0.7",
