@@ -205,16 +205,18 @@ export async function DELETE(
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    // Clean up images from Supabase
-    try {
-      const { data: files } = await supabase.storage
-        .from('campaign-images')
-        .list(`${session.user.id}/${params.id}`);
-      if (files && files.length > 0) {
-        const paths = files.map((f) => `${session.user.id}/${params.id}/${f.name}`);
-        await supabase.storage.from('campaign-images').remove(paths);
-      }
-    } catch { /* ignore cleanup errors */ }
+    // Clean up images from Supabase BEFORE deleting the campaign row.
+    // If storage fails, propagate to the outer catch (500) — campaign row stays,
+    // user can retry. Previously this was silently swallowed, leaving permanent orphans.
+    const { data: files, error: listError } = await supabase.storage
+      .from('campaign-images')
+      .list(`${session.user.id}/${params.id}`);
+    if (listError) throw listError;
+    if (files && files.length > 0) {
+      const paths = files.map((f) => `${session.user.id}/${params.id}/${f.name}`);
+      const { error: removeError } = await supabase.storage.from('campaign-images').remove(paths);
+      if (removeError) throw removeError;
+    }
 
     await prisma.campaign.delete({ where: { id: params.id } });
 

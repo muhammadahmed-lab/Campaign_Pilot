@@ -210,35 +210,50 @@ export default function StepChat({
     }
   };
 
-  const renderMarkdown = (text: string) => {
+  // Render a single line of inline text with **bold** tokens as <strong> JSX.
+  // No raw HTML; user/model content is escaped automatically by React.
+  function renderInline(line: string, keyPrefix: string): React.ReactNode[] {
+    if (!line) return [];
+    const parts = line.split(/(\*\*[\s\S]*?\*\*)/);
+    return parts
+      .filter((p) => p.length > 0)
+      .map((part, idx) => {
+        if (part.startsWith('**') && part.endsWith('**') && part.length >= 4) {
+          return <strong key={`${keyPrefix}-${idx}`}>{part.slice(2, -2)}</strong>;
+        }
+        return <React.Fragment key={`${keyPrefix}-${idx}`}>{part}</React.Fragment>;
+      });
+  }
+
+  // Render a paragraph block: split on \n and intersperse <br/>, tokenize each line for **bold**.
+  function renderBlockText(text: string, keyPrefix: string): React.ReactNode[] {
+    const lines = text.split('\n');
+    const out: React.ReactNode[] = [];
+    lines.forEach((line, idx) => {
+      if (idx > 0) out.push(<br key={`${keyPrefix}-br-${idx}`} />);
+      out.push(...renderInline(line, `${keyPrefix}-l${idx}`));
+    });
+    return out;
+  }
+
+  const renderMarkdown = (text: string): React.ReactNode => {
     if (!text) return null;
     const blocks = text.split('\n\n');
     return blocks.map((block, i) => {
-      const parsedBold = block
-        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\n/g, '<br/>');
-
       if (block.startsWith('- ') || block.startsWith('* ')) {
         const items = block.split('\n').map((item) => item.replace(/^[-*]\s/, ''));
         return (
           <ul key={i} className="list-disc pl-5 mb-3 space-y-1">
             {items.map((item, j) => (
-              <li
-                key={j}
-                dangerouslySetInnerHTML={{
-                  __html: item.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>'),
-                }}
-              />
+              <li key={j}>{renderInline(item, `b${i}-i${j}`)}</li>
             ))}
           </ul>
         );
       }
       return (
-        <p
-          key={i}
-          className="mb-3 last:mb-0 leading-relaxed"
-          dangerouslySetInnerHTML={{ __html: parsedBold }}
-        />
+        <p key={i} className="mb-3 last:mb-0 leading-relaxed">
+          {renderBlockText(block, `b${i}`)}
+        </p>
       );
     });
   };

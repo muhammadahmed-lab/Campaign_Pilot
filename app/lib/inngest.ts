@@ -110,14 +110,23 @@ export const launchCampaign = inngest.createFunction(
           batchFailed = recipientsChunk.length;
         }
 
-        // Increment counters in DB (not in-memory)
-        await prisma.campaign.update({
-          where: { id: campaignId },
+        // Atomic compare-and-swap: only apply the increment if this batch index
+        // hasn't been recorded yet. updateMany returns { count } without throwing
+        // when the WHERE excludes the row, so retries of an already-applied step
+        // silently no-op instead of double-counting.
+        const updateResult = await prisma.campaign.updateMany({
+          where: { id: campaignId, lastProcessedBatch: { lt: i } },
           data: {
             sent: { increment: batchSent },
             failed: { increment: batchFailed },
+            lastProcessedBatch: i,
           },
         });
+        if (updateResult.count === 0) {
+          console.warn(
+            `[launchCampaign] Skipping already-processed batch ${i} for campaign ${campaignId}`
+          );
+        }
 
         return { batchSent, batchFailed };
       });

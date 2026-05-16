@@ -96,6 +96,8 @@ async function directProcessCampaign(params: {
   });
 }
 
+const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024;
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -105,6 +107,13 @@ export async function POST(
 
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Reject oversized payloads before parsing JSON so a malicious body
+    // can't exhaust memory inside request.json().
+    const contentLength = request.headers.get('content-length');
+    if (contentLength && Number.parseInt(contentLength, 10) > MAX_PAYLOAD_BYTES) {
+      return NextResponse.json({ error: 'Payload too large' }, { status: 413 });
     }
 
     const campaignId = params.id;
@@ -118,12 +127,23 @@ export async function POST(
       return NextResponse.json({ error: 'Recipients must contain between 1 and 10000 entries' }, { status: 400 });
     }
 
-    const recipients: Recipient[] = body.recipients.map((r: any) => ({
+    const mapped: Recipient[] = body.recipients.map((r: any) => ({
       email: String(r.email || '').trim().toLowerCase(),
       name: r.name?.trim() || undefined,
     }));
 
-    const invalidRecipient = recipients.find((r) => !r.email || !isValidEmail(r.email));
+    // Dedupe by email (first occurrence wins). Drop entries with empty email.
+    const seen = new Map<string, Recipient>();
+    for (const r of mapped) {
+      if (r.email && !seen.has(r.email)) seen.set(r.email, r);
+    }
+    const recipients: Recipient[] = Array.from(seen.values());
+
+    if (recipients.length === 0) {
+      return NextResponse.json({ error: 'No valid recipients' }, { status: 400 });
+    }
+
+    const invalidRecipient = recipients.find((r) => !isValidEmail(r.email));
     if (invalidRecipient) {
       return NextResponse.json({ error: `Invalid recipient email: ${invalidRecipient.email}` }, { status: 400 });
     }

@@ -4,12 +4,24 @@ const ALGORITHM = 'aes-256-gcm';
 
 function getEncryptionKey(): Buffer {
   const key = process.env.CREDENTIAL_ENCRYPTION_KEY;
-  if (!key || key.length < 32) {
-    // Fallback: derive from NEXTAUTH_SECRET (always available)
-    const secret = process.env.NEXTAUTH_SECRET || 'fallback-key-please-set-env';
+  if (key && key.length >= 32) {
+    return Buffer.from(key, 'hex');
+  }
+  // Dev-mode convenience: derive from NEXTAUTH_SECRET. In production this should
+  // not be relied upon — set CREDENTIAL_ENCRYPTION_KEY (64-char hex) explicitly.
+  const secret = process.env.NEXTAUTH_SECRET;
+  if (secret) {
+    if (process.env.NODE_ENV === 'production') {
+      console.warn(
+        '[crypto] CREDENTIAL_ENCRYPTION_KEY not set; deriving from NEXTAUTH_SECRET. ' +
+        'Set CREDENTIAL_ENCRYPTION_KEY (64-char hex) for production.'
+      );
+    }
     return Buffer.from(secret.padEnd(32, '0').slice(0, 32));
   }
-  return Buffer.from(key, 'hex');
+  throw new Error(
+    'No encryption key available: set CREDENTIAL_ENCRYPTION_KEY (64-char hex) or NEXTAUTH_SECRET'
+  );
 }
 
 export function encrypt(text: string): string {
@@ -26,20 +38,19 @@ export function encrypt(text: string): string {
 
 export function decrypt(encryptedText: string): string {
   if (!encryptedText) return '';
-  // If it doesn't look encrypted (no colons), return as-is (backward compat with plaintext)
+  // Plaintext-migration path: legacy rows stored credentials un-encrypted
+  // (no colons in the value). Return them as-is so existing data still works.
   if (!encryptedText.includes(':')) return encryptedText;
-  try {
-    const [ivHex, authTagHex, encrypted] = encryptedText.split(':');
-    const key = getEncryptionKey();
-    const iv = Buffer.from(ivHex, 'hex');
-    const authTag = Buffer.from(authTagHex, 'hex');
-    const decipher = createDecipheriv(ALGORITHM, key, iv);
-    decipher.setAuthTag(authTag);
-    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    return decrypted;
-  } catch {
-    // If decryption fails, return as-is (plaintext fallback for migration)
-    return encryptedText;
-  }
+  // Encrypted format: iv:authTag:ciphertext. If decipher throws (bad key, tampering),
+  // propagate the error — callers must handle it. Previously this silently returned
+  // the ciphertext, which masked real corruption / key-rotation failures.
+  const [ivHex, authTagHex, encrypted] = encryptedText.split(':');
+  const key = getEncryptionKey();
+  const iv = Buffer.from(ivHex, 'hex');
+  const authTag = Buffer.from(authTagHex, 'hex');
+  const decipher = createDecipheriv(ALGORITHM, key, iv);
+  decipher.setAuthTag(authTag);
+  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
 }

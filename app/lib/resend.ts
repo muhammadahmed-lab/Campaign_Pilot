@@ -31,13 +31,30 @@ export async function sendBatch(
     );
 
     if (response.error) {
+      // Top-level batch error (auth, quota, schema) — all emails failed.
       result.failed = emails.length;
       result.errors = emails.map((e) => ({
         email: e.to,
         error: response.error?.message || "Batch send failed",
       }));
     } else {
-      result.sent = emails.length;
+      // Per-email results live at response.data.data — each entry has `id` on success.
+      const perEmail = (response.data as any)?.data;
+      if (!Array.isArray(perEmail) || perEmail.length !== emails.length) {
+        // Defensive: shape unexpected and no top-level error → assume batch succeeded.
+        result.sent = emails.length;
+      } else {
+        for (let i = 0; i < emails.length; i++) {
+          const item = perEmail[i];
+          if (item && typeof item === "object" && typeof item.id === "string" && item.id.length > 0) {
+            result.sent += 1;
+          } else {
+            result.failed += 1;
+            const errMsg = (item && (item.error?.message || item.error)) || "Send failed";
+            result.errors.push({ email: emails[i].to, error: String(errMsg) });
+          }
+        }
+      }
     }
   } catch (err) {
     result.failed = emails.length;
