@@ -4,6 +4,7 @@ import { sendBatch } from '@/app/lib/resend';
 import { sendSmtpBatch } from '@/app/lib/smtp';
 import { supabase } from '@/app/lib/supabase';
 import { interpolate } from '@/app/lib/interpolate';
+import { inlineCss } from '@/app/lib/inlineCss';
 import type { Recipient } from '@/app/types';
 
 type LaunchCampaignEvent = {
@@ -52,10 +53,15 @@ export const launchCampaign = inngest.createFunction(
 
     // Step 2: Load campaign data
     const campaign = await step.run('load-campaign', async () => {
-      return prisma.campaign.findUnique({
+      const row = await prisma.campaign.findUnique({
         where: { id: campaignId },
         select: { id: true, subject: true, htmlBody: true },
       });
+      if (!row) return null;
+      // Inline <style> blocks into element style attributes so Gmail's
+      // stripper doesn't drop them. One-shot per campaign — cached with
+      // load-campaign so retries don't re-run it.
+      return { ...row, htmlBody: inlineCss(row.htmlBody) };
     });
 
     if (!campaign) {

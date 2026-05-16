@@ -6,6 +6,7 @@ import { decrypt } from '@/app/lib/crypto';
 import { sendBatch } from '@/app/lib/resend';
 import { sendSmtpBatch } from '@/app/lib/smtp';
 import { interpolate } from '@/app/lib/interpolate';
+import { inlineCss } from '@/app/lib/inlineCss';
 import type { Recipient } from '@/app/types';
 
 function isValidEmail(email: string) {
@@ -43,6 +44,9 @@ async function directProcessCampaign(params: {
 
   if (!campaign) throw new Error('Campaign not found');
 
+  // Inline <style> blocks once so Gmail's CSS stripper doesn't break the layout.
+  const inlinedHtml = inlineCss(campaign.htmlBody);
+
   await prisma.campaign.update({
     where: { id: campaignId },
     data: { status: 'sending' },
@@ -58,7 +62,7 @@ async function directProcessCampaign(params: {
       from: providerEmail,
       to: recipient.email,
       subject: interpolate(campaign.subject, recipient),
-      html: interpolate(campaign.htmlBody, recipient),
+      html: interpolate(inlinedHtml, recipient),
     }));
 
     try {
