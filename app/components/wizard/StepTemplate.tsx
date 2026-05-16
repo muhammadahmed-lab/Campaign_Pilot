@@ -1,10 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Image from '@tiptap/extension-image';
-import Link from '@tiptap/extension-link';
 import toast from 'react-hot-toast';
 import type { ChatMessage, ImageAsset } from '@/app/types';
 
@@ -62,8 +58,13 @@ export default function StepTemplate({
   const [pendingImageUrl, setPendingImageUrl] = useState<string | null>(null);
   const [codeValue, setCodeValue] = useState(htmlBody);
 
-  const lastSetContentRef = useRef<string>('');
+  // lastLoadedRef tracks the htmlBody value we last wrote into (or read from)
+  // the Visual iframe. The input listener stamps this BEFORE calling setHtmlBody
+  // so the reload effect below sees `htmlBody === lastLoadedRef.current` and
+  // skips — preventing the loop that wiped edits in the original implementation.
+  const lastLoadedRef = useRef<string>('');
   const htmlBodyRef = useRef(htmlBody);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const htmlFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -72,32 +73,45 @@ export default function StepTemplate({
     setCodeValue(htmlBody);
   }, [htmlBody]);
 
-  const editor = useEditor({
-    extensions: [
-      StarterKit,
-      Image.configure({ inline: false, allowBase64: true }),
-      Link.configure({ openOnClick: false }),
-    ],
-    content: '',
-    editable: true,
-    onUpdate: ({ editor }) => {
-      const newBodyHtml = editor.getHTML();
-      if (newBodyHtml === lastSetContentRef.current) return;
-      const { before, after } = splitHtmlDoc(htmlBodyRef.current);
-      const assembled = assembleHtml(before, newBodyHtml, after);
-      lastSetContentRef.current = newBodyHtml;
-      setHtmlBody(assembled);
-    },
-  });
+  const loadIntoIframe = useCallback(
+    (fullHtml: string) => {
+      const iframe = iframeRef.current;
+      if (!iframe) return;
+      const doc = iframe.contentDocument;
+      if (!doc) return;
 
+      doc.open();
+      doc.write(fullHtml);
+      doc.close();
+
+      if (doc.body) {
+        doc.body.setAttribute('contenteditable', 'true');
+        doc.body.addEventListener('input', () => {
+          const { before, after } = splitHtmlDoc(htmlBodyRef.current);
+          const newBody = doc.body.innerHTML;
+          const reassembled = assembleHtml(before, newBody, after);
+          lastLoadedRef.current = reassembled;
+          setHtmlBody(reassembled);
+        });
+      }
+
+      lastLoadedRef.current = fullHtml;
+    },
+    [setHtmlBody]
+  );
+
+  // Reload the Visual iframe only on EXTERNAL htmlBody changes:
+  //   - Code-tab edits (handleCodeChange writes htmlBody directly)
+  //   - HTML file upload
+  //   - Regenerate
+  //   - Draft hydration (resumeId path in parent)
+  // Skipped while user is typing in Visual (lastLoadedRef matches htmlBody).
   useEffect(() => {
-    if (!editor) return;
-    const { bodyHtml } = splitHtmlDoc(htmlBody);
-    if (bodyHtml !== lastSetContentRef.current) {
-      editor.commands.setContent(bodyHtml, false);
-      lastSetContentRef.current = bodyHtml;
-    }
-  }, [htmlBody, editor]);
+    if (activeTab !== 'visual') return;
+    if (!iframeRef.current) return;
+    if (htmlBody === lastLoadedRef.current) return;
+    loadIntoIframe(htmlBody);
+  }, [activeTab, htmlBody, loadIntoIframe]);
 
   const generateTemplate = useCallback(async () => {
     setIsGenerating(true);
@@ -145,9 +159,24 @@ export default function StepTemplate({
     if (htmlFileInputRef.current) htmlFileInputRef.current.value = '';
   };
 
+  const readFileAsDataUrl = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const result = ev.target?.result;
+        if (typeof result === 'string') resolve(result);
+        else reject(new Error('FileReader returned non-string result'));
+      };
+      reader.onerror = () => reject(reader.error ?? new Error('FileReader error'));
+      reader.readAsDataURL(file);
+    });
+
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
     try {
       const formData = new FormData();
       formData.append('file', file);
@@ -158,20 +187,38 @@ export default function StepTemplate({
       setPendingImageUrl(url);
       setShowImagePicker(true);
     } catch {
-      toast.error('Failed to upload image');
+      // Storage unreachable — fall back to embedding as a data: URI. The iframe
+      // renders base64 natively. Warn the user since this can bloat the email.
+      try {
+        const dataUrl = await readFileAsDataUrl(file);
+        setPendingImageUrl(dataUrl);
+        setShowImagePicker(true);
+        toast('Storage unavailable — embedding image inline. This may bloat the email.', { icon: '⚠️' });
+      } catch {
+        toast.error('Failed to load image');
+      }
     }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const insertImage = (maxWidth: string) => {
-    if (!editor || !pendingImageUrl) return;
-    editor
-      .chain()
-      .focus()
-      .insertContent(
-        `<p style="text-align:center;margin:16px 0;"><img src="${pendingImageUrl}" alt="" style="max-width:${maxWidth};width:100%;height:auto;display:block;margin:0 auto;border-radius:8px;" /></p>`
-      )
-      .run();
+    const doc = iframeRef.current?.contentDocument;
+    if (!doc || !pendingImageUrl) return;
+    const p = doc.createElement('p');
+    p.setAttribute('style', 'text-align:center;margin:16px 0;');
+    const img = doc.createElement('img');
+    img.src = pendingImageUrl;
+    img.setAttribute('alt', '');
+    img.setAttribute(
+      'style',
+      `max-width:${maxWidth};width:100%;height:auto;display:block;margin:0 auto;border-radius:8px;`
+    );
+    p.appendChild(img);
+    doc.body.appendChild(p);
+    const { before, after } = splitHtmlDoc(htmlBodyRef.current);
+    const reassembled = assembleHtml(before, doc.body.innerHTML, after);
+    lastLoadedRef.current = reassembled;
+    setHtmlBody(reassembled);
     setShowImagePicker(false);
     setPendingImageUrl(null);
   };
@@ -280,7 +327,9 @@ export default function StepTemplate({
           </div>
         </div>
 
-        {/* Editor Content */}
+        {/* Editor content panes — all three always mounted, toggle via `display`.
+            Keeping them mounted prevents the Visual iframe from being recreated
+            on tab switch, which would lose its document and listener. */}
         <div className="flex-1 relative">
           {isGenerating && (
             <div className="absolute inset-0 z-10 bg-white/80 backdrop-blur-sm flex items-center justify-center">
@@ -294,15 +343,16 @@ export default function StepTemplate({
             </div>
           )}
 
-          {activeTab === 'visual' && (
-            <div className="bg-white text-gray-900 min-h-[600px] overflow-auto flex justify-center">
-              <div className="w-full max-w-[700px] p-6 prose prose-sm tiptap-host">
-                <EditorContent editor={editor} />
-              </div>
-            </div>
-          )}
+          <div style={{ display: activeTab === 'visual' ? 'block' : 'none' }} className="h-full">
+            <iframe
+              ref={iframeRef}
+              className="w-full bg-white border-none"
+              style={{ minHeight: '600px', height: '600px' }}
+              title="Email Editor"
+            />
+          </div>
 
-          {activeTab === 'code' && (
+          <div style={{ display: activeTab === 'code' ? 'block' : 'none' }} className="h-full">
             <textarea
               value={codeValue}
               onChange={handleCodeChange}
@@ -311,16 +361,16 @@ export default function StepTemplate({
               className="w-full bg-cp-black text-cp-light font-mono text-sm p-6 resize-none focus:outline-none whitespace-pre overflow-x-auto leading-relaxed min-h-[600px]"
               placeholder="<!-- Paste or edit raw HTML here -->"
             />
-          )}
+          </div>
 
-          {activeTab === 'preview' && (
+          <div style={{ display: activeTab === 'preview' ? 'block' : 'none' }} className="h-full">
             <iframe
               srcDoc={htmlBody}
               sandbox=""
               className="w-full min-h-[600px] border-none bg-white"
               title="Email Preview"
             />
-          )}
+          </div>
         </div>
       </div>
 
