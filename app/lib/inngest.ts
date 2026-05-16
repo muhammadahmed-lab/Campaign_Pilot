@@ -148,3 +148,51 @@ export const launchCampaign = inngest.createFunction(
     return { success: true, campaignId };
   }
 );
+
+// Daily cleanup of abandoned draft campaigns (older than 14 days).
+// Drops storage objects and the campaign row, per-row so one failure doesn't abort the batch.
+export const cleanupOldDrafts = inngest.createFunction(
+  { id: 'cleanup-old-drafts' },
+  { cron: '0 3 * * *' },
+  async ({ step }: { step: any }) => {
+    const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+    const drafts = await prisma.campaign.findMany({
+      where: { status: 'draft', updatedAt: { lt: cutoff } },
+      select: { id: true, userId: true },
+    });
+
+    let pruned = 0;
+    let errors = 0;
+
+    for (const draft of drafts) {
+      const result = await step.run(`cleanup-${draft.id}`, async () => {
+        try {
+          const folder = `${draft.userId}/${draft.id}`;
+          const { data: files, error: listError } = await supabase.storage
+            .from('campaign-images')
+            .list(folder);
+          if (listError) throw listError;
+
+          if (files && files.length > 0) {
+            const paths = files.map((file) => `${folder}/${file.name}`);
+            const { error: removeError } = await supabase.storage
+              .from('campaign-images')
+              .remove(paths);
+            if (removeError) throw removeError;
+          }
+
+          await prisma.campaign.delete({ where: { id: draft.id } });
+          return { ok: true };
+        } catch (error) {
+          console.error('Cleanup old draft error:', { campaignId: draft.id, error });
+          return { ok: false };
+        }
+      });
+
+      if (result.ok) pruned += 1;
+      else errors += 1;
+    }
+
+    return { pruned, errors };
+  }
+);

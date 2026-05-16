@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/app/lib/auth';
 import { supabase } from '@/app/lib/supabase';
 
@@ -60,6 +60,38 @@ export async function POST(request: Request) {
     return NextResponse.json({ url: urlData.publicUrl, path });
   } catch (error) {
     console.error('Upload error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const path = request.nextUrl.searchParams.get('path');
+    if (!path || path.trim().length === 0) {
+      return NextResponse.json({ error: 'Path is required' }, { status: 400 });
+    }
+
+    const trimmedPath = path.trim();
+    const userPrefix = `${session.user.id}/`;
+    const isAbsolute = trimmedPath.startsWith('/') || /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(trimmedPath);
+    if (isAbsolute || trimmedPath.includes('..') || !trimmedPath.startsWith(userPrefix)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const { error } = await supabase.storage.from('campaign-images').remove([trimmedPath]);
+    if (error) {
+      console.error('Image delete error:', error);
+      return NextResponse.json({ error: 'Failed to delete image' }, { status: 500 });
+    }
+
+    return NextResponse.json({ deleted: 1 });
+  } catch (error) {
+    console.error('Image delete error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

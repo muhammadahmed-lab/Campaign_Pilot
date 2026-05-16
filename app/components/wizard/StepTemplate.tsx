@@ -1,6 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Image from '@tiptap/extension-image';
+import Link from '@tiptap/extension-link';
+import toast from 'react-hot-toast';
 import type { ChatMessage, ImageAsset } from '@/app/types';
 
 interface StepTemplateProps {
@@ -25,24 +30,16 @@ const TEMPLATE_STYLES = [
   { value: 'product-update', label: 'Product Update' },
 ];
 
-// Simple HTML formatter for readable code view
-function formatHtml(html: string): string {
-  let formatted = '';
-  let indent = 0;
-  // Add newlines before/after tags
-  const parts = html.replace(/>\s*</g, '>\n<').split('\n');
-  for (const part of parts) {
-    const trimmed = part.trim();
-    if (!trimmed) continue;
-    // Decrease indent for closing tags
-    if (trimmed.startsWith('</')) indent = Math.max(0, indent - 1);
-    formatted += '  '.repeat(indent) + trimmed + '\n';
-    // Increase indent for opening tags (not self-closing, not closing)
-    if (trimmed.startsWith('<') && !trimmed.startsWith('</') && !trimmed.endsWith('/>') && !trimmed.startsWith('<!') && !trimmed.startsWith('<meta') && !trimmed.startsWith('<link') && !trimmed.startsWith('<br') && !trimmed.startsWith('<hr') && !trimmed.startsWith('<img')) {
-      indent++;
-    }
-  }
-  return formatted.trim();
+function splitHtmlDoc(html: string): { before: string; bodyHtml: string; after: string } {
+  const match = html.match(/^([\s\S]*<body[^>]*>)([\s\S]*)(<\/body>[\s\S]*)$/i);
+  if (match) return { before: match[1], bodyHtml: match[2], after: match[3] };
+  const defaultBefore = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head><body style="margin:0;padding:24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a1a1a;background:#fff;line-height:1.6;">`;
+  const defaultAfter = `</body></html>`;
+  return { before: defaultBefore, bodyHtml: html, after: defaultAfter };
+}
+
+function assembleHtml(before: string, body: string, after: string): string {
+  return `${before}${body}${after}`;
 }
 
 export default function StepTemplate({
@@ -58,62 +55,51 @@ export default function StepTemplate({
   onNext,
   onBack,
 }: StepTemplateProps) {
-  const [activeTab, setActiveTab] = useState<'visual' | 'code'>('visual');
-  const [codeValue, setCodeValue] = useState('');
+  const [activeTab, setActiveTab] = useState<'visual' | 'code' | 'preview'>('visual');
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pendingImage, setPendingImage] = useState<string | null>(null); // URL waiting for size selection
+  const [showImagePicker, setShowImagePicker] = useState(false);
+  const [pendingImageUrl, setPendingImageUrl] = useState<string | null>(null);
+  const [codeValue, setCodeValue] = useState(htmlBody);
 
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
-  const htmlInputRef = useRef<HTMLInputElement>(null);
+  const lastSetContentRef = useRef<string>('');
+  const htmlBodyRef = useRef(htmlBody);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const htmlFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load HTML into contenteditable iframe
-  const loadIntoIframe = useCallback((html: string) => {
-    const iframe = iframeRef.current;
-    if (!iframe) return;
-    const doc = iframe.contentDocument;
-    if (!doc) return;
-
-    doc.open();
-    doc.write(`
-      <!DOCTYPE html>
-      <html><head>
-        <meta charset="utf-8">
-        <style>
-          body { margin:0; padding:24px; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; color:#1a1a1a; background:#fff; line-height:1.6; min-height:100vh; cursor:text; }
-          a { color:#4f46e5; text-decoration:underline; }
-          img { max-width:100%; height:auto; border-radius:8px; display:block; margin:16px 0; }
-          [contenteditable]:focus { outline:2px solid #3b82f6; outline-offset:2px; border-radius:4px; }
-          [contenteditable]:hover { outline:1px dashed #94a3b8; outline-offset:2px; border-radius:4px; }
-        </style>
-      </head>
-      <body contenteditable="true">${html}</body></html>
-    `);
-    doc.close();
-
-    doc.body.addEventListener('input', () => {
-      setHtmlBody(doc.body.innerHTML);
-    });
-  }, [setHtmlBody]);
-
-  // Load content into iframe when in visual mode
   useEffect(() => {
-    if (activeTab === 'visual' && htmlBody && iframeRef.current) {
-      const timer = setTimeout(() => loadIntoIframe(htmlBody), 100);
-      return () => clearTimeout(timer);
-    }
-  }, [activeTab, htmlBody, loadIntoIframe]);
+    htmlBodyRef.current = htmlBody;
+    setCodeValue(htmlBody);
+  }, [htmlBody]);
 
-  // Auto-generate on mount if empty
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      Image.configure({ inline: false, allowBase64: true }),
+      Link.configure({ openOnClick: false }),
+    ],
+    content: '',
+    editable: true,
+    onUpdate: ({ editor }) => {
+      const newBodyHtml = editor.getHTML();
+      if (newBodyHtml === lastSetContentRef.current) return;
+      const { before, after } = splitHtmlDoc(htmlBodyRef.current);
+      const assembled = assembleHtml(before, newBodyHtml, after);
+      lastSetContentRef.current = newBodyHtml;
+      setHtmlBody(assembled);
+    },
+  });
+
   useEffect(() => {
-    if (!htmlBody && !isGenerating && chatMessages.length > 0) {
-      generateTemplate();
+    if (!editor) return;
+    const { bodyHtml } = splitHtmlDoc(htmlBody);
+    if (bodyHtml !== lastSetContentRef.current) {
+      editor.commands.setContent(bodyHtml, false);
+      lastSetContentRef.current = bodyHtml;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [htmlBody, editor]);
 
-  const generateTemplate = async () => {
+  const generateTemplate = useCallback(async () => {
     setIsGenerating(true);
     setError(null);
     try {
@@ -131,6 +117,32 @@ export default function StepTemplate({
     } finally {
       setIsGenerating(false);
     }
+  }, [chatMessages, campaignId, templateStyle, imageAssets, setHtmlBody, setSubject]);
+
+  // Auto-generate on mount if empty
+  useEffect(() => {
+    if (!htmlBody && !isGenerating && chatMessages.length > 0) {
+      generateTemplate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleCodeChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setCodeValue(val);
+    setHtmlBody(val);
+  };
+
+  const handleHtmlUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const content = ev.target?.result as string;
+      if (content) setHtmlBody(content);
+    };
+    reader.readAsText(file);
+    if (htmlFileInputRef.current) htmlFileInputRef.current.value = '';
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -143,48 +155,25 @@ export default function StepTemplate({
       const res = await fetch('/api/upload', { method: 'POST', body: formData });
       if (!res.ok) throw new Error('Upload failed');
       const { url } = await res.json();
-
-      setPendingImage(url);
+      setPendingImageUrl(url);
+      setShowImagePicker(true);
     } catch {
-      alert('Failed to upload image.');
+      toast.error('Failed to upload image');
     }
-    if (imageInputRef.current) imageInputRef.current.value = '';
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const insertImageWithSize = (url: string, maxWidth: string) => {
-    const doc = iframeRef.current?.contentDocument;
-    if (!doc) return;
-
-    const wrapper = doc.createElement('div');
-    wrapper.style.textAlign = 'center';
-    wrapper.style.margin = '24px 0';
-
-    const img = doc.createElement('img');
-    img.src = url;
-    img.setAttribute('width', maxWidth);
-    img.style.width = '100%';
-    img.style.maxWidth = maxWidth;
-    img.style.height = 'auto';
-    img.style.display = 'block';
-    img.style.margin = '0 auto';
-    img.style.borderRadius = '8px';
-
-    wrapper.appendChild(img);
-    doc.body.appendChild(wrapper);
-    setHtmlBody(doc.body.innerHTML);
-    setPendingImage(null);
-  };
-
-  const handleHtmlFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const content = ev.target?.result as string;
-      setHtmlBody(content);
-    };
-    reader.readAsText(file);
-    if (htmlInputRef.current) htmlInputRef.current.value = '';
+  const insertImage = (maxWidth: string) => {
+    if (!editor || !pendingImageUrl) return;
+    editor
+      .chain()
+      .focus()
+      .insertContent(
+        `<p style="text-align:center;margin:16px 0;"><img src="${pendingImageUrl}" alt="" style="max-width:${maxWidth};width:100%;height:auto;display:block;margin:0 auto;border-radius:8px;" /></p>`
+      )
+      .run();
+    setShowImagePicker(false);
+    setPendingImageUrl(null);
   };
 
   return (
@@ -240,140 +229,96 @@ export default function StepTemplate({
       </div>
 
       {/* Hidden file inputs */}
-      <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-      <input ref={htmlInputRef} type="file" accept=".html,.htm" className="hidden" onChange={handleHtmlFileUpload} />
+      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+      <input ref={htmlFileInputRef} type="file" accept=".html,.htm" className="hidden" onChange={handleHtmlUpload} />
 
       {/* Editor Area */}
       <div className="flex-1 flex flex-col bg-cp-dark border border-cp-border rounded-xl overflow-hidden min-h-[600px]">
         {/* Tabs */}
-        <div className="flex items-center border-b border-cp-border bg-cp-charcoal px-2 pt-2">
-          <button
-            onClick={() => { setHtmlBody(codeValue || htmlBody); setActiveTab('visual'); }}
-            className={`flex items-center gap-2 px-4 py-3 rounded-t-lg text-sm transition-colors border-b-2 ${
-              activeTab === 'visual'
-                ? 'bg-cp-dark border-white text-white'
-                : 'border-transparent text-cp-grey hover:text-cp-light hover:bg-cp-dark/50'
-            }`}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-            </svg>
-            Visual Editor
-          </button>
-          <button
-            onClick={() => { setCodeValue(formatHtml(htmlBody)); setActiveTab('code'); }}
-            className={`flex items-center gap-2 px-4 py-3 rounded-t-lg text-sm transition-colors border-b-2 ${
-              activeTab === 'code'
-                ? 'bg-cp-dark border-white text-white'
-                : 'border-transparent text-cp-grey hover:text-cp-light hover:bg-cp-dark/50'
-            }`}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-            </svg>
-            HTML Code
-          </button>
+        <div className="flex items-center justify-between border-b border-cp-border bg-cp-charcoal px-2 pt-2">
+          <div className="flex">
+            {(['visual', 'code', 'preview'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-4 py-3 text-sm transition-colors border-b-2 ${
+                  activeTab === tab
+                    ? 'bg-cp-dark border-white text-white'
+                    : 'border-transparent text-cp-grey hover:text-cp-light hover:bg-cp-dark/50'
+                }`}
+              >
+                {tab === 'visual' ? 'Visual Editor' : tab === 'code' ? 'HTML Code' : 'Preview'}
+              </button>
+            ))}
+          </div>
+          {activeTab === 'visual' && (
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-1.5 px-3 py-1.5 mr-2 rounded-md text-sm text-cp-grey hover:text-white hover:bg-cp-border transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              Insert Image
+            </button>
+          )}
         </div>
 
-        {/* Toolbar */}
-        <div className="flex items-center justify-between px-4 py-2 bg-cp-charcoal border-b border-cp-border">
-          <button
-            onClick={() => imageInputRef.current?.click()}
-            disabled={activeTab === 'code'}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm text-cp-grey hover:text-white hover:bg-cp-border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            Insert Image
-          </button>
-          <span className="text-xs font-mono text-cp-muted">
-            {activeTab === 'visual' ? 'Click on text to edit directly' : 'Editing raw HTML'}
-          </span>
+        {/* Mock email chrome */}
+        <div className="bg-white border-b border-gray-200 px-6 py-3 flex flex-col gap-1.5 shrink-0">
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-gray-500 w-14 text-xs">From:</span>
+            <span className="text-gray-700">you@yourcompany.com</span>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-gray-500 w-14 text-xs">To:</span>
+            <span className="text-gray-700">{'{{name}}'} &lt;recipient@example.com&gt;</span>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-gray-500 w-14 text-xs">Subject:</span>
+            <span className="text-gray-900 font-medium">{subject || 'No subject'}</span>
+          </div>
         </div>
 
         {/* Editor Content */}
-        {/* Image Size Picker */}
-        {pendingImage && (
-          <div className="px-4 py-4 bg-cp-dark border-b border-cp-border">
-            <p className="text-sm text-cp-light mb-3">Choose image size:</p>
-            <div className="flex items-end gap-3">
-              {[
-                { label: 'Small', width: '150px', preview: 'h-10 w-10' },
-                { label: 'Medium', width: '300px', preview: 'h-10 w-16' },
-                { label: 'Large', width: '450px', preview: 'h-10 w-24' },
-                { label: 'Full Width', width: '100%', preview: 'h-10 w-32' },
-              ].map((size) => (
-                <button
-                  key={size.label}
-                  onClick={() => insertImageWithSize(pendingImage, size.width)}
-                  className="flex flex-col items-center gap-2 group"
-                >
-                  <div className={`${size.preview} rounded border border-cp-border group-hover:border-white bg-cp-charcoal transition-colors overflow-hidden`}>
-                    <img src={pendingImage} alt="" className="w-full h-full object-cover" />
-                  </div>
-                  <span className="text-xs text-cp-grey group-hover:text-white transition-colors">{size.label}</span>
-                </button>
-              ))}
-              <button
-                onClick={() => setPendingImage(null)}
-                className="ml-auto text-xs text-cp-grey hover:text-red-400 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
-        <div className="flex-1 relative flex flex-col">
-          {activeTab === 'visual' ? (
-            <div className="flex-1 flex flex-col bg-gray-100">
-              {/* Mock Email Chrome */}
-              <div className="bg-white border-b border-gray-200 px-6 py-3 flex flex-col gap-1.5 shrink-0">
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="text-gray-500 w-14 text-xs">From:</span>
-                  <span className="text-gray-700">you@yourcompany.com</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="text-gray-500 w-14 text-xs">To:</span>
-                  <span className="text-gray-700">{'{{name}}'} &lt;recipient@example.com&gt;</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="text-gray-500 w-14 text-xs">Subject:</span>
-                  <span className="text-gray-900 font-medium">{subject || 'No subject'}</span>
-                </div>
-              </div>
-
-              {/* Iframe */}
-              <div className="flex-1 relative bg-white mx-auto w-full max-w-3xl shadow-sm border-x border-gray-200">
-                {isGenerating && (
-                  <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center z-10">
-                    <div className="flex flex-col items-center gap-3">
-                      <svg className="w-8 h-8 text-black animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
-                      <span className="text-sm font-mono text-black uppercase tracking-widest">Generating...</span>
-                    </div>
-                  </div>
-                )}
-                <iframe
-                  ref={iframeRef}
-                  className="w-full border-none"
-                  style={{ minHeight: '500px', height: '600px' }}
-                  title="Email Editor"
-                />
+        <div className="flex-1 relative">
+          {isGenerating && (
+            <div className="absolute inset-0 z-10 bg-white/80 backdrop-blur-sm flex items-center justify-center">
+              <div className="flex flex-col items-center gap-3">
+                <svg className="w-8 h-8 text-black animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                <span className="text-sm font-mono text-black uppercase tracking-widest">Generating...</span>
               </div>
             </div>
-          ) : (
+          )}
+
+          {activeTab === 'visual' && (
+            <div className="bg-white text-gray-900 min-h-[600px] overflow-auto flex justify-center">
+              <div className="w-full max-w-[700px] p-6 prose prose-sm tiptap-host">
+                <EditorContent editor={editor} />
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'code' && (
             <textarea
               value={codeValue}
-              onChange={(e) => { setCodeValue(e.target.value); setHtmlBody(e.target.value); }}
+              onChange={handleCodeChange}
               spellCheck={false}
               wrap="off"
-              className="flex-1 w-full bg-cp-black text-cp-light font-mono text-sm p-6 resize-none focus:outline-none whitespace-pre overflow-x-auto leading-relaxed min-h-[500px]"
+              className="w-full bg-cp-black text-cp-light font-mono text-sm p-6 resize-none focus:outline-none whitespace-pre overflow-x-auto leading-relaxed min-h-[600px]"
               placeholder="<!-- Paste or edit raw HTML here -->"
+            />
+          )}
+
+          {activeTab === 'preview' && (
+            <iframe
+              srcDoc={htmlBody}
+              sandbox=""
+              className="w-full min-h-[600px] border-none bg-white"
+              title="Email Preview"
             />
           )}
         </div>
@@ -393,7 +338,7 @@ export default function StepTemplate({
             Regenerate
           </button>
           <button
-            onClick={() => htmlInputRef.current?.click()}
+            onClick={() => htmlFileInputRef.current?.click()}
             className="flex-1 sm:flex-none px-5 py-2.5 rounded-lg border border-cp-muted text-cp-light hover:bg-cp-border hover:text-white transition-colors flex items-center justify-center gap-2 font-medium"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -414,6 +359,27 @@ export default function StepTemplate({
           </svg>
         </button>
       </div>
+
+      {/* Image Size Picker Modal */}
+      {showImagePicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="bg-cp-dark border border-cp-border p-6 rounded-lg shadow-xl max-w-sm w-full">
+            <h3 className="text-lg font-semibold text-white mb-4 font-heading">Select Image Size</h3>
+            <div className="flex flex-col space-y-3">
+              <button onClick={() => insertImage('150px')} className="px-4 py-2 bg-cp-charcoal hover:bg-cp-border text-white rounded transition-colors text-left">Small (150px)</button>
+              <button onClick={() => insertImage('300px')} className="px-4 py-2 bg-cp-charcoal hover:bg-cp-border text-white rounded transition-colors text-left">Medium (300px)</button>
+              <button onClick={() => insertImage('450px')} className="px-4 py-2 bg-cp-charcoal hover:bg-cp-border text-white rounded transition-colors text-left">Large (450px)</button>
+              <button onClick={() => insertImage('100%')} className="px-4 py-2 bg-cp-charcoal hover:bg-cp-border text-white rounded transition-colors text-left">Full Width</button>
+            </div>
+            <button
+              onClick={() => { setShowImagePicker(false); setPendingImageUrl(null); }}
+              className="mt-6 w-full px-4 py-2 border border-cp-muted text-cp-light hover:text-white rounded transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

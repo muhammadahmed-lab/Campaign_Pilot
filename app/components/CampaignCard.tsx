@@ -25,12 +25,13 @@ export default function CampaignCard({ campaign, onDelete }: { campaign: Campaig
   };
 
   const statusConfig = getStatusConfig(campaign.status);
+  const href = campaign.status === 'draft' ? `/campaign/new?resumeId=${campaign.id}` : `/campaign/${campaign.id}`;
 
   return (
     <>
     {ConfirmDialog}
     <Link
-      href={`/campaign/${campaign.id}`}
+      href={href}
       className="group relative flex flex-col justify-between bg-cp-dark border border-cp-border rounded-xl p-6 hover:border-cp-muted transition-all duration-200"
     >
       {/* Delete Button */}

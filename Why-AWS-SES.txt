@@ -1,0 +1,21 @@
+Why AWS SES?
+
+Right now we're limited to 2,000 emails/day through Gmail SMTP.
+AWS SES removes that limit — 50,000 emails/day, scalable to unlimited.
+
+Cost: $0.10 per 1,000 emails.
+10,000 emails = $1. That's it. No subscriptions, no contact fees.
+
+Competitors like Mailchimp ($350/mo) and Brevo ($499/mo) charge
+10-15x more for the same volume. They also lock you into monthly
+plans based on contact count — even unsubscribed contacts cost you.
+
+Other providers like SendGrid ($20/mo for 50K) and Postmark ($15/mo
+for 10K) are similar to SES in pricing, but they add platform fees
+on top. SES is pure pay-per-send with no base cost.
+
+What makes us different: CampaignPilot (Mera Tool Basically). We own it.
+Mailchimp/Brevo are rented platforms — we pay monthly, they control
+the pricing, and our data sits on their servers. With CampaignPilot +
+SES, we control everything: the tool, the data, the sending, and the
+cost. 

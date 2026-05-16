@@ -2,6 +2,8 @@
 
 interface StepIndicatorProps {
   currentStep: number;
+  maxStepReached: number;
+  onStepClick?: (step: number) => void;
 }
 
 const STEPS = [
@@ -12,7 +14,7 @@ const STEPS = [
   { id: 5, label: 'Launch' },
 ];
 
-export default function StepIndicator({ currentStep }: StepIndicatorProps) {
+export default function StepIndicator({ currentStep, maxStepReached, onStepClick }: StepIndicatorProps) {
   return (
     <div className="relative">
       {/* Background connecting line */}
@@ -29,9 +31,18 @@ export default function StepIndicator({ currentStep }: StepIndicatorProps) {
           const isCompleted = step.id < currentStep;
           const isCurrent = step.id === currentStep;
           const isFuture = step.id > currentStep;
+          const isClickable = step.id <= maxStepReached;
 
           return (
-            <div key={step.id} className="flex flex-col items-center relative">
+            <button
+              key={step.id}
+              type="button"
+              disabled={!isClickable}
+              onClick={() => onStepClick?.(step.id)}
+              className={`flex flex-col items-center relative transition-all duration-300 bg-transparent border-none p-0 ${
+                isClickable && !isCurrent ? 'hover:scale-105 cursor-pointer' : ''
+              } ${!isClickable ? 'cursor-not-allowed opacity-90' : ''}`}
+            >
               <div
                 className={`
                   w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold transition-all duration-300
@@ -59,7 +70,7 @@ export default function StepIndicator({ currentStep }: StepIndicatorProps) {
               >
                 {step.label}
               </span>
-            </div>
+            </button>
           );
         })}
       </div>

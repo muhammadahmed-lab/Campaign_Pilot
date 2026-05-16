@@ -93,6 +93,8 @@ model Campaign {
   sent               Int      @default(0)
   failed             Int      @default(0)
   chatHistory        Json     @default("[]")
+  recipients         Json     @default("[]")
+  imageAssets        Json     @default("[]")
   archivedAt         DateTime?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt

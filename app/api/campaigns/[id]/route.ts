@@ -7,8 +7,10 @@ import { encrypt } from '@/app/lib/crypto';
 const allowedFields = new Set([
   'scheduledAt', 'sendNow', 'subject', 'htmlBody', 'provider',
   'providerEmail', 'providerCredential', 'recipientCount', 'chatHistory',
-  'name', 'sendDelay', 'templateStyle', 'archivedAt',
+  'name', 'sendDelay', 'templateStyle', 'archivedAt', 'recipients', 'imageAssets',
 ]);
+
+const allowedImageRoles = new Set(['logo', 'hero', 'screenshot', 'icon', 'reference', 'other']);
 
 export async function GET(
   _request: Request,
@@ -27,7 +29,7 @@ export async function GET(
         scheduledAt: true, sendNow: true, sendDelay: true, templateStyle: true,
         provider: true, providerEmail: true,
         recipientCount: true, sent: true, failed: true,
-        chatHistory: true, archivedAt: true,
+        chatHistory: true, recipients: true, imageAssets: true, archivedAt: true,
         createdAt: true, updatedAt: true,
         // providerCredential intentionally excluded
       },
@@ -121,6 +123,42 @@ export async function PATCH(
         }
         case 'chatHistory': {
           updateData.chatHistory = value;
+          break;
+        }
+        case 'recipients': {
+          if (!Array.isArray(value)) return NextResponse.json({ error: 'Invalid recipients' }, { status: 400 });
+          if (value.length > 10000) return NextResponse.json({ error: 'Too many recipients' }, { status: 413 });
+          const isValid = value.every((recipient) => (
+            recipient &&
+            typeof recipient === 'object' &&
+            !Array.isArray(recipient) &&
+            typeof (recipient as { email?: unknown }).email === 'string' &&
+            (
+              (recipient as { name?: unknown }).name === undefined ||
+              typeof (recipient as { name?: unknown }).name === 'string'
+            )
+          ));
+          if (!isValid) return NextResponse.json({ error: 'Invalid recipients' }, { status: 400 });
+          updateData.recipients = value;
+          break;
+        }
+        case 'imageAssets': {
+          if (!Array.isArray(value)) return NextResponse.json({ error: 'Invalid imageAssets' }, { status: 400 });
+          if (value.length > 100) return NextResponse.json({ error: 'Too many imageAssets' }, { status: 413 });
+          const isValid = value.every((asset) => (
+            asset &&
+            typeof asset === 'object' &&
+            !Array.isArray(asset) &&
+            typeof (asset as { url?: unknown }).url === 'string' &&
+            typeof (asset as { role?: unknown }).role === 'string' &&
+            allowedImageRoles.has((asset as { role: string }).role) &&
+            (
+              (asset as { alt?: unknown }).alt === undefined ||
+              typeof (asset as { alt?: unknown }).alt === 'string'
+            )
+          ));
+          if (!isValid) return NextResponse.json({ error: 'Invalid imageAssets' }, { status: 400 });
+          updateData.imageAssets = value;
           break;
         }
         case 'archivedAt': {

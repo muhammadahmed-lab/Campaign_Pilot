@@ -1,0 +1,173 @@
+================================================================================
+   CampaignPilot + AWS SES vs Brevo vs Mailchimp - Cost Comparison (2026)
+================================================================================
+
+
+1. PRICING AT A GLANCE
+================================================================================
+
+                        AWS SES              Brevo               Mailchimp
+                        (CampaignPilot)      (Standalone)        (Standalone)
+--------------------------------------------------------------------------------
+Base Cost               $0.10/1,000 emails   $9-499/month        $20-350/month
+Cost per Email          $0.0001              $0.0018-$0.006      $0.013-$0.04
+Free Tier               3,000/month (12 mo)  300/day (9,000/mo)  500 contacts only
+Daily Sending Limit     50,000 (production)  Varies by plan      Capped by plan
+Max Daily (with req.)   UNLIMITED            Plan-dependent      Plan-dependent
+Setup Fee               $0                   $0                  $0
+Dedicated IP            $24.95/month         $251/year           Premium only
+
+
+2. COST COMPARISON - SENDING 10,000 EMAILS PER DAY (300,000/MONTH)
+================================================================================
+
+Platform                Monthly Cost         Annual Cost          Cost/Email
+--------------------------------------------------------------------------------
+AWS SES (CampaignPilot) $30/month*           $360/year            $0.0001
+Brevo Starter           NOT POSSIBLE         -                    -
+  (5k/month limit)
+Brevo Business          $169/month           $2,028/year          $0.00056
+  (needs custom plan)
+Brevo Professional      $499/month           $5,988/year          $0.00166
+Mailchimp Standard      ~$135/month          $1,620/year          $0.00113
+  (but CAPPED at        (only 120k/month -
+   120k emails/month)    insufficient!)
+Mailchimp Premium       $350+/month          $4,200+/year         $0.00117
+  (150k sends/month -    (still short of
+   still not enough)      300k requirement)
+Mailchimp Custom        Contact sales        Estimated $500+/mo   Unknown
+
+* AWS SES: $0.10 x 300 = $30 for 300,000 emails. Add ~$3 for data transfer.
+
+
+3. COST COMPARISON - SENDING 1,000 EMAILS PER DAY (30,000/MONTH)
+================================================================================
+
+Platform                Monthly Cost         Annual Cost          Cost/Email
+--------------------------------------------------------------------------------
+AWS SES (CampaignPilot) $3/month             $36/year             $0.0001
+Brevo Starter           $29/month            $348/year            $0.00097
+Mailchimp Standard      $45/month            $540/year            $0.0015
+  (for 2,500 contacts)
+
+
+4. COST COMPARISON - SENDING 50,000 EMAILS PER DAY (1,500,000/MONTH)
+================================================================================
+
+Platform                Monthly Cost         Annual Cost          Cost/Email
+--------------------------------------------------------------------------------
+AWS SES (CampaignPilot) $150/month           $1,800/year          $0.0001
+Brevo Professional      $499+/month          $5,988+/year         $0.00033+
+Mailchimp               Custom enterprise    ~$10,000+/year       Unknown
+                        (contact sales)
+
+
+5. WHY AWS SES + CAMPAIGNPILOT IS CHEAPER
+================================================================================
+
+A) YOU PAY ONLY FOR WHAT YOU SEND
+   - No monthly subscription, no contact limits
+   - $0.10 per 1,000 emails sent. That's it.
+   - Brevo/Mailchimp charge based on contacts + plan tiers
+
+B) NO CONTACT-BASED PRICING
+   - Mailchimp charges based on how many contacts you HAVE
+   - Even unsubscribed contacts count toward your billing!
+   - AWS SES doesn't care how many contacts you have
+
+C) SENDING LIMITS ARE MASSIVE
+   - AWS SES Production: 50,000 emails/day (14 emails/second)
+   - Can request increase to UNLIMITED
+   - Brevo Free: only 300/day
+   - Mailchimp: capped by plan (120k-150k/month)
+
+D) NO FEATURE GATES
+   - Brevo charges $9/month just to remove their logo
+   - Mailchimp locks automation behind Standard ($20+) plan
+   - CampaignPilot: all features included, you own the tool
+
+
+6. ANNUAL SAVINGS WITH AWS SES
+================================================================================
+
+Scenario: 10,000 emails/day (300,000/month)
+
+                        Annual Cost     vs AWS SES Savings
+------------------------------------------------------------
+AWS SES + CampaignPilot $360/year       -
+Brevo Business          $2,028/year     YOU SAVE $1,668/year (82% cheaper)
+Brevo Professional      $5,988/year     YOU SAVE $5,628/year (94% cheaper)
+Mailchimp Premium       $4,200/year     YOU SAVE $3,840/year (91% cheaper)
+Mailchimp Custom        $6,000+/year    YOU SAVE $5,640+/year (94% cheaper)
+
+
+7. AWS SES DAILY SENDING CAPACITY
+================================================================================
+
+Account Stage           Emails/Day      Emails/Second    Time to Reach
+------------------------------------------------------------------------
+Sandbox (Day 1)         200             1                Immediate
+Production (Day 2-3)    50,000          14               24-48 hours
+After increase req.     200,000+        50+              1-2 weeks
+Maximum possible        UNLIMITED       Custom           On request
+
+To send 10,000 emails at 14/second = ~12 minutes
+To send 50,000 emails at 14/second = ~60 minutes
+To send 100,000 emails at 50/second = ~33 minutes
+
+
+8. WHAT CAMPAIGNPILOT + AWS SES GIVES YOU (THAT BREVO/MAILCHIMP DON'T)
+================================================================================
+
+- AI-powered email template generation with GPT
+- Smart image classification (logo, hero, screenshot auto-placement)
+- Reference template cloning (upload any email, AI replicates design)
+- Visual + HTML code editor
+- Scheduled sending via Inngest
+- Configurable send delay for throttling
+- You OWN the tool - no monthly SaaS subscription
+- Your data stays in YOUR database (Supabase)
+- No branding/watermark on emails
+- Unlimited contacts, unlimited campaigns
+- Open source - customize anything
+
+
+9. AWS SES SETUP REQUIREMENTS
+================================================================================
+
+What you need:
+- AWS Account (free to create)
+- A domain you own (for SPF/DKIM/DMARC verification)
+- Production access approval (~24 hours)
+- CampaignPilot integration (handled by the tool)
+
+What AWS requires for production access:
+- Describe your email use case
+- Explain your opt-in process (how users subscribe)
+- Show you handle bounces and complaints
+- Typical approval time: 24-48 hours
+
+
+10. BOTTOM LINE
+================================================================================
+
+For a business sending 10,000 emails per day:
+
+  Mailchimp: ~$350-500/month = $4,200-6,000/year
+  Brevo:     ~$169-499/month = $2,028-5,988/year
+  AWS SES:   ~$30/month      = $360/year
+
+  SAVINGS WITH AWS SES: $1,668 to $5,628 PER YEAR
+
+CampaignPilot is a one-time build. AWS SES is pay-per-email.
+Together, they replace $200-500/month SaaS subscriptions with a $30/month
+email bill and a tool you fully own and control.
+
+================================================================================
+Sources:
+- AWS SES Pricing: https://aws.amazon.com/ses/pricing/
+- AWS SES Quotas: https://docs.aws.amazon.com/ses/latest/dg/quotas.html
+- Brevo Pricing: https://www.brevo.com/pricing/
+- Mailchimp Pricing: https://mailchimp.com/pricing/marketing/
+- AWS SES Production Access: https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html
+================================================================================

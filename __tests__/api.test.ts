@@ -26,6 +26,17 @@ jest.mock('@/app/lib/resend', () => ({
   sendBatch: jest.fn(),
 }));
 
+jest.mock('@/app/lib/supabase', () => ({
+  supabase: {
+    storage: {
+      from: jest.fn().mockReturnValue({
+        list: jest.fn().mockResolvedValue({ data: [], error: null }),
+        remove: jest.fn().mockResolvedValue({ error: null }),
+      }),
+    },
+  },
+}));
+
 jest.mock('@/app/lib/smtp', () => ({
   sendSmtpBatch: jest.fn(),
 }));

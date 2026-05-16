@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, DragEvent, ClipboardEvent } from 'react';
+import toast from 'react-hot-toast';
 import type { ChatMessage, ImageAsset, ImageRole } from '@/app/types';
 
 function parseImageRoles(text: string): ImageAsset[] {
@@ -41,10 +42,11 @@ export default function StepChat({
   onBack,
 }: StepChatProps) {
   const [inputText, setInputText] = useState('');
-  const [attachedImages, setAttachedImages] = useState<string[]>([]);
+  const [attachedImages, setAttachedImages] = useState<Array<{ url: string; path?: string }>>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -68,12 +70,9 @@ export default function StepChat({
     e.target.style.height = `${Math.min(e.target.scrollHeight, 150)}px`;
   };
 
-  const [isUploading, setIsUploading] = useState(false);
-
   const processFiles = async (files: FileList | File[]) => {
     const imageFiles = Array.from(files).filter((f) => f.type.startsWith('image/'));
     if (imageFiles.length === 0) return;
-
     setIsUploading(true);
     for (const file of imageFiles) {
       try {
@@ -82,14 +81,14 @@ export default function StepChat({
         formData.append('campaignId', campaignId);
         const res = await fetch('/api/upload', { method: 'POST', body: formData });
         if (!res.ok) throw new Error('Upload failed');
-        const { url } = await res.json();
-        setAttachedImages((prev) => [...prev, url]);
+        const { url, path } = await res.json();
+        setAttachedImages((prev) => [...prev, { url, path }]);
       } catch {
         // Fallback to base64 if upload fails
         const reader = new FileReader();
         reader.onload = (e) => {
           if (e.target?.result) {
-            setAttachedImages((prev) => [...prev, e.target!.result as string]);
+            setAttachedImages((prev) => [...prev, { url: e.target!.result as string }]);
           }
         };
         reader.readAsDataURL(file);
@@ -126,7 +125,16 @@ export default function StepChat({
     if (e.dataTransfer.files) processFiles(e.dataTransfer.files);
   };
 
-  const removeAttachedImage = (index: number) => {
+  const removeAttachedImage = async (index: number) => {
+    const entry = attachedImages[index];
+    if (entry?.path) {
+      try {
+        const res = await fetch(`/api/upload?path=${encodeURIComponent(entry.path)}`, { method: 'DELETE' });
+        if (!res.ok) toast.error('Failed to delete uploaded image');
+      } catch {
+        toast.error('Failed to delete uploaded image');
+      }
+    }
     setAttachedImages((prev) => prev.filter((_, i) => i !== index));
   };
 
@@ -136,7 +144,7 @@ export default function StepChat({
     const newUserMsg: ChatMessage = {
       role: 'user',
       content: inputText.trim(),
-      images: attachedImages.length > 0 ? attachedImages : undefined,
+      images: attachedImages.length > 0 ? attachedImages.map((a) => a.url) : undefined,
       timestamp: Date.now(),
     };
 
@@ -173,7 +181,6 @@ export default function StepChat({
         }
       }
 
-      // Parse image role classifications from AI response
       const newAssets = parseImageRoles(aiContent);
       if (newAssets.length > 0) {
         setImageAssets([...imageAssets, ...newAssets]);
@@ -420,7 +427,7 @@ export default function StepChat({
               {attachedImages.map((img, idx) => (
                 <div key={idx} className="relative group shrink-0">
                   <img
-                    src={img}
+                    src={img.url}
                     alt="preview"
                     className="w-16 h-16 object-cover rounded-lg border border-cp-muted group-hover:opacity-50 transition-opacity"
                   />

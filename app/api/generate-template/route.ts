@@ -178,7 +178,7 @@ Do not include markdown code fences or any text outside the JSON.`;
 export async function POST(req: Request) {
   try {
     const session = await auth();
-    if (!session?.user) {
+    if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -191,6 +191,16 @@ export async function POST(req: Request) {
     if (!body || !Array.isArray(body.messages) || body.messages.length === 0 ||
         typeof body.campaignId !== 'string' || body.campaignId.trim().length === 0) {
       return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+    }
+
+    // Ownership check BEFORE OpenAI call so an attacker can't burn tokens
+    // with someone else's campaign id.
+    const existing = await prisma.campaign.findFirst({
+      where: { id: body.campaignId, userId: session.user.id },
+      select: { id: true },
+    });
+    if (!existing) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     // Resolve image assets

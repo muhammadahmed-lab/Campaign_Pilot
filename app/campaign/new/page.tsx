@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import StepIndicator from '@/app/components/wizard/StepIndicator';
 import StepCalendar from '@/app/components/wizard/StepCalendar';
@@ -45,12 +45,77 @@ const INITIAL_STATE: LocalWizardState = {
   imageAssets: [],
 };
 
-export default function NewCampaignWizard() {
+function CenteredSpinner() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-cp-black">
+      <svg className="w-8 h-8 text-white animate-spin" fill="none" viewBox="0 0 24 24">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+      </svg>
+    </div>
+  );
+}
+
+function NewCampaignWizardInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const resumeId = searchParams.get('resumeId');
+
   const [currentStep, setCurrentStep] = useState(1);
+  const [maxStepReached, setMaxStepReached] = useState(1);
   const [campaignId, setCampaignId] = useState<string | null>(null);
   const [wizardState, setWizardState] = useState<LocalWizardState>(INITIAL_STATE);
   const [isLaunching, setIsLaunching] = useState(false);
+  const [isHydrating, setIsHydrating] = useState(!!resumeId);
+
+  useEffect(() => {
+    if (!resumeId) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/campaigns/${resumeId}`);
+        if (!res.ok) throw new Error('Failed to load draft');
+        const c = await res.json();
+        const hydrated: LocalWizardState = {
+          name: c.name ?? '',
+          scheduledAt: c.scheduledAt ? new Date(c.scheduledAt) : null,
+          sendNow: c.sendNow ?? false,
+          chatMessages: Array.isArray(c.chatHistory) ? c.chatHistory : [],
+          subject: c.subject ?? '',
+          htmlBody: c.htmlBody ?? '',
+          recipients: Array.isArray(c.recipients) ? c.recipients : [],
+          provider: (c.provider || 'gmail') as EmailProvider,
+          providerEmail: c.providerEmail ?? '',
+          providerCredential: '',
+          saveCredentials: true,
+          sendDelay: c.sendDelay ?? 0,
+          templateStyle: c.templateStyle || 'professional',
+          imageAssets: Array.isArray(c.imageAssets) ? c.imageAssets : [],
+        };
+        setWizardState(hydrated);
+        setCampaignId(c.id);
+        let inferred = 1;
+        if (hydrated.recipients.length > 0) inferred = 4;
+        else if (hydrated.htmlBody) inferred = 3;
+        else if (hydrated.chatMessages.length > 0) inferred = 2;
+        else if (hydrated.scheduledAt || hydrated.sendNow) inferred = 1;
+        setCurrentStep(inferred);
+        setMaxStepReached(inferred);
+      } catch {
+        toast.error('Could not load draft');
+        router.push('/');
+      } finally {
+        setIsHydrating(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resumeId]);
+
+  const goToStep = useCallback(
+    (step: number) => {
+      if (step >= 1 && step <= maxStepReached) setCurrentStep(step);
+    },
+    [maxStepReached]
+  );
 
   // Create campaign draft only when needed (lazy creation)
   const ensureCampaign = async (): Promise<string | null> => {
@@ -86,6 +151,8 @@ export default function NewCampaignWizard() {
           providerCredential: state.providerCredential,
           recipientCount: state.recipients.length,
           chatHistory: state.chatMessages,
+          recipients: state.recipients,
+          imageAssets: state.imageAssets,
           sendDelay: state.sendDelay,
           templateStyle: state.templateStyle,
         }),
@@ -105,12 +172,12 @@ export default function NewCampaignWizard() {
     const nextStep = Math.min(currentStep + 1, 5);
     await saveCampaign(wizardState, cid);
     setCurrentStep(nextStep);
+    setMaxStepReached((m) => Math.max(m, nextStep));
   };
 
   const handleBack = async () => {
     if (currentStep === 1) {
-      // If no campaign was created yet (user never clicked Next), just go back
-      // If campaign exists but is empty, delete the draft
+      // If campaign exists but user backs out of step 1, delete the draft
       if (campaignId) {
         try {
           await fetch(`/api/campaigns/${campaignId}`, { method: 'DELETE' });
@@ -255,6 +322,8 @@ export default function NewCampaignWizard() {
     }
   };
 
+  if (isHydrating) return <CenteredSpinner />;
+
   return (
     <div className="min-h-screen bg-cp-black text-cp-light">
       <header className="sticky top-0 z-10 bg-cp-black/80 backdrop-blur-md border-b border-cp-border px-6 py-4 flex items-center">
@@ -279,11 +348,23 @@ export default function NewCampaignWizard() {
 
       <main className="max-w-4xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
         <div className="mb-12">
-          <StepIndicator currentStep={currentStep} />
+          <StepIndicator
+            currentStep={currentStep}
+            maxStepReached={maxStepReached}
+            onStepClick={goToStep}
+          />
         </div>
 
         {renderStep()}
       </main>
     </div>
+  );
+}
+
+export default function NewCampaignWizard() {
+  return (
+    <Suspense fallback={<CenteredSpinner />}>
+      <NewCampaignWizardInner />
+    </Suspense>
   );
 }
