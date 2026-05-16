@@ -214,8 +214,8 @@ export default function StepTemplate({
 
   return (
     <div className="flex flex-col gap-6 w-full">
-      {/* Top Row: Back & Subject */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+      {/* Top Row: Back */}
+      <div>
         <button
           onClick={onBack}
           className="flex items-center gap-2 text-cp-grey hover:text-white transition-colors w-fit"
@@ -225,20 +225,6 @@ export default function StepTemplate({
           </svg>
           Back
         </button>
-
-        <div className="flex-1 flex items-center gap-3 bg-cp-dark border border-cp-border rounded-lg px-4 py-2 transition-all">
-          <label htmlFor="campaign-subject" className="text-cp-grey text-sm font-medium uppercase tracking-wider cursor-text">Subject:</label>
-          <input
-            id="campaign-subject"
-            name="subject"
-            type="text"
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            autoComplete="off"
-            placeholder="Enter email subject..."
-            className="flex-1 bg-transparent border-none text-white font-heading text-lg focus:outline-none focus:ring-2 focus:ring-white/30 rounded-sm placeholder:text-cp-muted"
-          />
-        </div>
       </div>
 
       {error && (
@@ -303,7 +289,7 @@ export default function StepTemplate({
           )}
         </div>
 
-        {/* Mock email chrome */}
+        {/* Email composer chrome — Subject is the editable one (like Gmail) */}
         <div className="bg-white border-b border-gray-200 px-6 py-3 flex flex-col gap-1.5 shrink-0">
           <div className="flex items-center gap-2 text-sm">
             <span className="text-gray-500 w-14 text-xs">From:</span>
@@ -314,8 +300,17 @@ export default function StepTemplate({
             <span className="text-gray-700">{'{{name}}'} &lt;recipient@example.com&gt;</span>
           </div>
           <div className="flex items-center gap-2 text-sm">
-            <span className="text-gray-500 w-14 text-xs">Subject:</span>
-            <span className="text-gray-900 font-medium">{subject || 'No subject'}</span>
+            <label htmlFor="campaign-subject" className="text-gray-500 w-14 text-xs cursor-text">Subject:</label>
+            <input
+              id="campaign-subject"
+              name="subject"
+              type="text"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              autoComplete="off"
+              placeholder="Enter subject..."
+              className="flex-1 bg-transparent border-none text-gray-900 font-medium text-sm focus:outline-none focus:ring-2 focus:ring-blue-400/40 rounded-sm placeholder:text-gray-400"
+            />
           </div>
         </div>
 
