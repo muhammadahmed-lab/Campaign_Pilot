@@ -4,3 +4,9 @@ node_modules
 .env.local
 *.log
 .DS_Store
+
+# Local pitch / marketing docs — not for the public repo
+AWS-SES-Cost-Comparison.txt
+CampaignPilot-Pitch-Short.txt
+CampaignPilot-Pitch.txt
+Why-AWS-SES.txt
