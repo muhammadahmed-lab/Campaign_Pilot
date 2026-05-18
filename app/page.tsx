@@ -7,6 +7,7 @@ import Image from 'next/image';
 import toast from 'react-hot-toast';
 import Logo from '@/app/components/Logo';
 import CampaignCard from './components/CampaignCard';
+import TemplateCard, { type TemplateSummary } from './components/TemplateCard';
 import type { CampaignStatus } from './types';
 
 export interface Campaign {
@@ -25,6 +26,7 @@ export interface Campaign {
 export default function Dashboard() {
   const { data: session, status } = useSession();
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [templates, setTemplates] = useState<TemplateSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const handleDelete = async (id: string) => {
@@ -41,18 +43,30 @@ export default function Dashboard() {
     }
   };
 
+  const handleDeleteTemplate = async (id: string) => {
+    try {
+      const res = await fetch(`/api/templates/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setTemplates((prev) => prev.filter((t) => t.id !== id));
+        toast.success('Template deleted');
+      } else {
+        toast.error('Failed to delete template');
+      }
+    } catch {
+      toast.error('Network error. Please try again.');
+    }
+  };
+
   useEffect(() => {
     if (status === 'authenticated') {
-      fetch('/api/campaigns')
-        .then((res) => res.json())
-        .then((data) => {
-          setCampaigns(Array.isArray(data) ? data : []);
-          setIsLoading(false);
-        })
-        .catch(() => {
-          setCampaigns([]);
-          setIsLoading(false);
-        });
+      Promise.all([
+        fetch('/api/campaigns').then((res) => res.json()).catch(() => []),
+        fetch('/api/templates').then((res) => res.json()).catch(() => []),
+      ]).then(([campaignsData, templatesData]) => {
+        setCampaigns(Array.isArray(campaignsData) ? campaignsData : []);
+        setTemplates(Array.isArray(templatesData) ? templatesData : []);
+        setIsLoading(false);
+      });
     }
   }, [status]);
 
@@ -169,6 +183,25 @@ export default function Dashboard() {
               <CampaignCard key={campaign.id} campaign={campaign} onDelete={handleDelete} />
             ))}
           </div>
+        )}
+
+        {templates.length > 0 && (
+          <section className="mt-16">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-heading text-white">Your Templates</h2>
+              <span className="text-sm text-cp-grey font-mono">
+                {templates.length} {templates.length === 1 ? 'template' : 'templates'}
+              </span>
+            </div>
+            <p className="text-sm text-cp-grey mb-6 max-w-2xl">
+              Saved designs you can reuse. Click a template to start a new campaign from it — your edits won't affect the saved version.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {templates.map((template) => (
+                <TemplateCard key={template.id} template={template} onDelete={handleDeleteTemplate} />
+              ))}
+            </div>
+          </section>
         )}
       </main>
     </div>

@@ -43,6 +43,7 @@ export default function StepChat({
 }: StepChatProps) {
   const [inputText, setInputText] = useState('');
   const [attachedImages, setAttachedImages] = useState<Array<{ url: string; path?: string }>>([]);
+  const [attachedFiles, setAttachedFiles] = useState<Array<{ name: string; content: string; kind: 'html' | 'pdf' | 'text' }>>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState('');
@@ -71,30 +72,69 @@ export default function StepChat({
   };
 
   const processFiles = async (files: FileList | File[]) => {
-    const imageFiles = Array.from(files).filter((f) => f.type.startsWith('image/'));
-    if (imageFiles.length === 0) return;
+    const all = Array.from(files);
+    if (all.length === 0) return;
     setIsUploading(true);
-    for (const file of imageFiles) {
-      try {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('campaignId', campaignId);
-        const res = await fetch('/api/upload', { method: 'POST', body: formData });
-        if (!res.ok) throw new Error('Upload failed');
-        const { url, path } = await res.json();
-        setAttachedImages((prev) => [...prev, { url, path }]);
-      } catch {
-        // Fallback to base64 if upload fails
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          if (e.target?.result) {
-            setAttachedImages((prev) => [...prev, { url: e.target!.result as string }]);
-          }
-        };
-        reader.readAsDataURL(file);
+    for (const file of all) {
+      if (file.type.startsWith('image/')) {
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('campaignId', campaignId);
+          const res = await fetch('/api/upload', { method: 'POST', body: formData });
+          if (!res.ok) throw new Error('Upload failed');
+          const { url, path } = await res.json();
+          setAttachedImages((prev) => [...prev, { url, path }]);
+        } catch {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            if (e.target?.result) {
+              setAttachedImages((prev) => [...prev, { url: e.target!.result as string }]);
+            }
+          };
+          reader.readAsDataURL(file);
+        }
+        continue;
+      }
+
+      const lower = file.name.toLowerCase();
+      const isHtml = lower.endsWith('.html') || lower.endsWith('.htm');
+      const isText = lower.endsWith('.txt') || lower.endsWith('.md');
+      const isPdf = lower.endsWith('.pdf') || file.type === 'application/pdf';
+
+      if (isHtml || isText) {
+        try {
+          const text = await file.text();
+          setAttachedFiles((prev) => [
+            ...prev,
+            { name: file.name, content: text, kind: isHtml ? 'html' : 'text' },
+          ]);
+        } catch {
+          toast.error(`Failed to read ${file.name}`);
+        }
+      } else if (isPdf) {
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+          const res = await fetch('/api/parse-file', { method: 'POST', body: formData });
+          if (!res.ok) throw new Error('Parse failed');
+          const { text, name } = await res.json();
+          setAttachedFiles((prev) => [
+            ...prev,
+            { name: name || file.name, content: text || '', kind: 'pdf' },
+          ]);
+        } catch {
+          toast.error(`Failed to parse ${file.name}`);
+        }
+      } else {
+        toast.error(`Unsupported file type: ${file.name}`);
       }
     }
     setIsUploading(false);
+  };
+
+  const removeAttachedFile = (index: number) => {
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -139,11 +179,21 @@ export default function StepChat({
   };
 
   const handleSend = async () => {
-    if (!inputText.trim() && attachedImages.length === 0) return;
+    if (!inputText.trim() && attachedImages.length === 0 && attachedFiles.length === 0) return;
+
+    // Prepend each attached file's content as a fenced block so the AI sees it
+    // as part of the user message. /api/chat is multimodal-aware but treats
+    // these as text — no backend changes needed.
+    const filePrefix = attachedFiles
+      .map((f) => `[FILE: ${f.name}]\n${f.content}\n[/FILE]`)
+      .join('\n\n');
+    const composedContent = filePrefix
+      ? `${filePrefix}\n\n${inputText.trim()}`.trim()
+      : inputText.trim();
 
     const newUserMsg: ChatMessage = {
       role: 'user',
-      content: inputText.trim(),
+      content: composedContent,
       images: attachedImages.length > 0 ? attachedImages.map((a) => a.url) : undefined,
       timestamp: Date.now(),
     };
@@ -152,6 +202,7 @@ export default function StepChat({
     setChatMessages(updatedMessages);
     setInputText('');
     setAttachedImages([]);
+    setAttachedFiles([]);
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
 
     setIsTyping(true);
@@ -451,10 +502,10 @@ export default function StepChat({
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
-          {attachedImages.length > 0 && (
-            <div className="flex gap-3 p-3 border-b border-cp-border overflow-x-auto">
+          {(attachedImages.length > 0 || attachedFiles.length > 0) && (
+            <div className="flex flex-wrap gap-2 p-3 border-b border-cp-border">
               {attachedImages.map((img, idx) => (
-                <div key={idx} className="relative group shrink-0">
+                <div key={`img-${idx}`} className="relative group shrink-0">
                   <img
                     src={img.url}
                     alt="preview"
@@ -470,13 +521,34 @@ export default function StepChat({
                   </button>
                 </div>
               ))}
+              {attachedFiles.map((f, idx) => (
+                <div
+                  key={`file-${idx}`}
+                  className="relative group flex items-center gap-2 px-3 py-2 bg-cp-charcoal border border-cp-border rounded-lg shrink-0"
+                  title={`${f.content.length.toLocaleString()} chars`}
+                >
+                  <span className="text-xs font-mono uppercase tracking-wider text-cp-grey">
+                    {f.kind}
+                  </span>
+                  <span className="text-sm text-cp-light max-w-[180px] truncate">{f.name}</span>
+                  <button
+                    onClick={() => removeAttachedFile(idx)}
+                    className="text-cp-grey hover:text-red-400 transition-colors"
+                    title="Remove"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
             </div>
           )}
 
           <div className="flex items-end gap-2 p-2">
             <input
               type="file"
-              accept="image/*"
+              accept="image/*,.html,.htm,.pdf,.txt,.md"
               multiple
               className="hidden"
               ref={fileInputRef}
@@ -485,7 +557,7 @@ export default function StepChat({
             <button
               onClick={() => fileInputRef.current?.click()}
               className="p-2.5 text-cp-grey hover:text-white hover:bg-cp-border rounded-xl transition-colors shrink-0"
-              title="Upload Screenshot"
+              title="Upload image, HTML, PDF, or text file"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -505,7 +577,7 @@ export default function StepChat({
 
             <button
               onClick={handleSend}
-              disabled={(!inputText.trim() && attachedImages.length === 0) || isTyping || isUploading}
+              disabled={(!inputText.trim() && attachedImages.length === 0 && attachedFiles.length === 0) || isTyping || isUploading}
               className="p-2.5 bg-white hover:bg-cp-light disabled:bg-cp-border disabled:text-cp-muted text-black rounded-xl transition-colors shrink-0"
               title="Send message"
             >

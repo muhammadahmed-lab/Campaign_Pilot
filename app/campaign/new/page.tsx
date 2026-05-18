@@ -61,13 +61,14 @@ function NewCampaignWizardInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const resumeId = searchParams.get('resumeId');
+  const templateId = searchParams.get('templateId');
 
   const [currentStep, setCurrentStep] = useState(1);
   const [maxStepReached, setMaxStepReached] = useState(1);
   const [campaignId, setCampaignId] = useState<string | null>(null);
   const [wizardState, setWizardState] = useState<LocalWizardState>(INITIAL_STATE);
   const [isLaunching, setIsLaunching] = useState(false);
-  const [isHydrating, setIsHydrating] = useState(!!resumeId);
+  const [isHydrating, setIsHydrating] = useState(!!resumeId || !!templateId);
 
   useEffect(() => {
     if (!resumeId) return;
@@ -110,6 +111,35 @@ function NewCampaignWizardInner() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resumeId]);
+
+  // Hydrate from a saved template — copies template content but does NOT
+  // create a campaign draft. Lands user on Template step (3) so they can
+  // edit before launching. The draft row is created on first Next click.
+  useEffect(() => {
+    if (!templateId) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/templates/${templateId}`);
+        if (!res.ok) throw new Error('Failed to load template');
+        const t = await res.json();
+        setWizardState((prev) => ({
+          ...prev,
+          subject: t.subject ?? '',
+          htmlBody: t.htmlBody ?? '',
+          templateStyle: t.templateStyle || 'professional',
+          imageAssets: Array.isArray(t.imageAssets) ? t.imageAssets : [],
+        }));
+        setCurrentStep(3);
+        setMaxStepReached(3);
+      } catch {
+        toast.error('Could not load template');
+        router.push('/');
+      } finally {
+        setIsHydrating(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templateId]);
 
   const goToStep = useCallback(
     (step: number) => {

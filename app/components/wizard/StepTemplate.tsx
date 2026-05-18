@@ -4,6 +4,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import type { ChatMessage, ImageAsset } from '@/app/types';
 import { splitHtmlDoc, assembleHtml } from '@/app/lib/htmlEnvelope';
+import { compactInlineImages } from '@/app/lib/compactInlineImages';
+import SaveTemplateModal from '@/app/components/SaveTemplateModal';
 
 interface StepTemplateProps {
   campaignId: string;
@@ -46,6 +48,7 @@ export default function StepTemplate({
   const [showImagePicker, setShowImagePicker] = useState(false);
   const [pendingImageUrl, setPendingImageUrl] = useState<string | null>(null);
   const [codeValue, setCodeValue] = useState(htmlBody);
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false);
 
   // lastLoadedRef tracks the htmlBody value we last wrote into (or read from)
   // the Visual iframe. The input listener stamps this BEFORE calling setHtmlBody
@@ -82,12 +85,114 @@ export default function StepTemplate({
           lastLoadedRef.current = reassembled;
           setHtmlBody(reassembled);
         });
+
+        // Intercept image paste: upload to Supabase BEFORE the browser inserts
+        // a giant base64 data URI into the body. Keeps htmlBody small so the
+        // email survives provider size limits.
+        doc.body.addEventListener('paste', (event) => {
+          const clipboardEvent = event as ClipboardEvent;
+          const items = clipboardEvent.clipboardData?.items;
+          if (!items) return;
+          const imageItems = Array.from(items).filter((it) => it.type.startsWith('image/'));
+          if (imageItems.length === 0) return;
+
+          clipboardEvent.preventDefault();
+          const toastId = toast.loading('Uploading pasted image…');
+
+          (async () => {
+            try {
+              for (const item of imageItems) {
+                const file = item.getAsFile();
+                if (!file) continue;
+                let imgUrl: string | null = null;
+                try {
+                  const formData = new FormData();
+                  formData.append('file', file);
+                  formData.append('campaignId', campaignId);
+                  const res = await fetch('/api/upload', { method: 'POST', body: formData });
+                  if (!res.ok) throw new Error('Upload failed');
+                  const { url } = await res.json();
+                  imgUrl = typeof url === 'string' ? url : null;
+                } catch {
+                  // Fallback: keep as base64 — compactInlineImages will catch it on step 3→4.
+                  imgUrl = await new Promise<string | null>((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => resolve((e.target?.result as string) || null);
+                    reader.onerror = () => resolve(null);
+                    reader.readAsDataURL(file);
+                  });
+                }
+                if (!imgUrl) continue;
+                const img = doc.createElement('img');
+                img.setAttribute('src', imgUrl);
+                img.setAttribute('alt', '');
+                img.setAttribute(
+                  'style',
+                  'max-width:100%;height:auto;display:block;margin:8px auto;'
+                );
+                const selection = doc.getSelection();
+                if (selection && selection.rangeCount > 0) {
+                  const range = selection.getRangeAt(0);
+                  range.deleteContents();
+                  range.insertNode(img);
+                  range.collapse(false);
+                } else {
+                  doc.body.appendChild(img);
+                }
+              }
+              // Trigger the input listener so htmlBody syncs.
+              doc.body.dispatchEvent(new Event('input'));
+            } finally {
+              toast.dismiss(toastId);
+            }
+          })();
+        });
       }
 
       lastLoadedRef.current = fullHtml;
     },
-    [setHtmlBody]
+    [setHtmlBody, campaignId]
   );
+
+  const saveAsTemplate = async (name: string) => {
+    try {
+      let bodyToSave = htmlBody;
+      if (htmlBody.includes('data:image/')) {
+        const toastId = toast.loading('Optimizing images before saving…');
+        try {
+          const { html: compacted } = await compactInlineImages(htmlBody, campaignId);
+          bodyToSave = compacted;
+        } catch {
+          // Soft-fail — save with what we have.
+        } finally {
+          toast.dismiss(toastId);
+        }
+      }
+
+      const res = await fetch('/api/templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          subject,
+          htmlBody: bodyToSave,
+          templateStyle,
+          imageAssets: imageAssets ?? [],
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err?.error || 'Failed to save template');
+        return;
+      }
+
+      toast.success(`Saved "${name}" as template`);
+      setShowSaveTemplate(false);
+    } catch {
+      toast.error('Network error while saving template');
+    }
+  };
 
   // Reload the Visual iframe only on EXTERNAL htmlBody changes:
   //   - Code-tab edits (handleCodeChange writes htmlBody directly)
@@ -383,6 +488,17 @@ export default function StepTemplate({
             </svg>
             Upload HTML
           </button>
+          <button
+            onClick={() => setShowSaveTemplate(true)}
+            disabled={!htmlBody}
+            className="flex-1 sm:flex-none px-5 py-2.5 rounded-lg border border-cp-muted text-cp-light hover:bg-cp-border hover:text-white transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+            title="Save this design as a reusable template"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+            </svg>
+            Save as Template
+          </button>
         </div>
 
         <button
@@ -396,6 +512,13 @@ export default function StepTemplate({
           </svg>
         </button>
       </div>
+
+      <SaveTemplateModal
+        open={showSaveTemplate}
+        initialName={subject || 'My Template'}
+        onCancel={() => setShowSaveTemplate(false)}
+        onSave={saveAsTemplate}
+      />
 
       {/* Image Size Picker Modal */}
       {showImagePicker && (

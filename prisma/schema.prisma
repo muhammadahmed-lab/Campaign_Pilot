@@ -17,6 +17,7 @@ model User {
   accounts      Account[]
   sessions      Session[]
   campaigns      Campaign[]
+  templates      Template[]
   providerConfig ProviderConfig?
 
   createdAt     DateTime   @default(now())
@@ -105,4 +106,21 @@ model Campaign {
   @@index([userId])
   @@index([status])
   @@index([scheduledAt])
+}
+
+model Template {
+  id            String   @id @default(cuid())
+  userId        String
+  name          String   @default("Untitled Template")
+  subject       String   @default("")
+  htmlBody      String   @default("")
+  templateStyle String   @default("professional")
+  imageAssets   Json     @default("[]")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([updatedAt])
 }
