@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/app/lib/auth';
-import { PDFParse } from 'pdf-parse';
+import { extractText, getDocumentProxy } from 'unpdf';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+// Node runtime (not edge) so we have the full Buffer / Uint8Array story.
+export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
   try {
@@ -27,18 +30,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Only PDF files supported by this endpoint' }, { status: 400 });
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const parser = new PDFParse({ data: new Uint8Array(buffer) });
-    try {
-      const result = await parser.getText();
-      return NextResponse.json({
-        name: file.name,
-        text: result.text || '',
-        pages: result.total,
-      });
-    } finally {
-      await parser.destroy().catch(() => undefined);
-    }
+    const buffer = new Uint8Array(await file.arrayBuffer());
+    const pdf = await getDocumentProxy(buffer);
+    // mergePages: true → text is a single string (one per page joined).
+    const { text, totalPages } = await extractText(pdf, { mergePages: true });
+
+    return NextResponse.json({
+      name: file.name,
+      text: text || '',
+      pages: totalPages,
+    });
   } catch (error) {
     console.error('parse-file error:', error);
     return NextResponse.json({ error: 'Failed to parse file' }, { status: 500 });
